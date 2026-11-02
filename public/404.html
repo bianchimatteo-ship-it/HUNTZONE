@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HUNTZONE — Area non trovata</title>
+  </head>
+  <body style="background:#10120f;color:#eee;font:16px system-ui;padding:3rem">
+    <p>Ritorno a <a id="home" href="/" style="color:#d8bb69">HUNTZONE</a>…</p>
+    <script>
+      const appBase = location.pathname.startsWith('/HUNTZONE/') ? '/HUNTZONE/' : '/';
+      document.getElementById('home').href = appBase;
+      location.replace(`${appBase}#/home`);
+    </script>
+  </body>
+</html>
