@@ -4,6 +4,8 @@
 
 This is the verification plan for later implementation, not evidence that software exists or has passed tests. Separate deterministic automated checks, device/platform checks and safe field trials. Record build/version, mode/engine version, test venue category, device/browser/OS, sample cadence, network conditions, expected result, observed result and defects. Use synthetic coordinates and fixtures for automated tests. Field tests require informed adult participants, a safe permitted venue and a stop/pause plan.
 
+The owner has confirmed all six modes are beta requirements. See [BETA-SCOPE.md](BETA-SCOPE.md) for proposals that remain unapproved. A mode is not accepted from a passing configuration test alone: the complete authoritative lifecycle, multi-client behavior, GPS policy, result persistence and field criteria must pass.
+
 Do not invent throughput, latency, battery or accuracy targets before collecting a baseline. For each performance threshold below marked **set from pilot**, first record a baseline on the intended deployment and representative devices, agree a service/user target, then make it a release gate. Functional invariants such as “no duplicate outcome” are hard acceptance criteria immediately.
 
 ## Test layers
@@ -57,6 +59,21 @@ Repeat with database connection loss, failover and a restored backup. The backup
 4. Record accuracy, age, boundary uncertainty, false capture/rejection, battery, data use and participant comprehension; do not collect route history.
 5. Stop the session if a participant enters an unsafe area, loses safe connectivity, or asks to stop. Verify withdrawal/end cleanup.
 6. Review incidents and false positives before widening the pilot. No numeric accuracy or battery claim is published until measured across representative devices and locations.
+
+## Six-mode beta gate
+
+Run the shared lifecycle/authorization/idempotency/reconnect/timeout suite against every approved immutable mode version, plus these mode-specific cases:
+
+| Mode | Required mode-specific outcomes |
+|---|---|
+| CLASSIC HIDE & SEEK | One configured seeker; hider-role privacy; capture threshold/confirmation; remaining-hider timeout win; configured capture-goal win; tie result. |
+| MANHUNT | Team assignment and limits; capture authorization; fugitive escape/deadline; hunter target threshold; host/participant disconnect. |
+| INFECTED | Initial infected-count boundary; conversion exactly once; no conversion by unauthorized role; survivor timeout and full-conversion outcomes. |
+| TEAM HUNT | Balanced team constraints; no friendly capture unless configured; simultaneous team elimination; timeout score and tie resolution. |
+| SURVIVAL | Player-specific eligibility; elimination/spectator projection; last-player outcome; timeout rank/tie; no self or duplicate capture. |
+| TASKS & DECEPTION | Hidden-role and secret-task isolation; allowed task assignment/completion; invalid/expired/duplicate claims; sabotage limits; authorized accusation/reveal; timeout and tie outcomes. |
+
+Every case remains blocked until its rule proposal is approved and encoded in the immutable config schema. CI should run pure-engine, API/database integration, WebSocket multi-client, browser and Android device suites as those milestones land. The existing local-demo test is not evidence for this gate.
 
 ## Release evidence
 

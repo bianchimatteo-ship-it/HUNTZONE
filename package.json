@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck && vite build",
     "build:github-pages": "tsc -b && vite build --mode github-pages",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc -b --pretty && tsc --noEmit -p packages/game-core/tsconfig.json",
     "test": "vitest run",
     "preview": "vite preview"
   },

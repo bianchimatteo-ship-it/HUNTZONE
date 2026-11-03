@@ -9,7 +9,7 @@ The first product is a responsive website. A native Android client follows for r
 ## Product at a glance
 
 - Private and public matches for 3–30 players, with room to scale beyond a single match server.
-- CLASSIC HIDE & SEEK as the first mode; MANHUNT, INFECTED, TEAM HUNT, SURVIVAL and TASKS & DECEPTION as later mode configurations.
+- All six modes are in the confirmed beta target: CLASSIC HIDE & SEEK, MANHUNT, INFECTED, TEAM HUNT, SURVIVAL and TASKS & DECEPTION. Their detailed rules remain subject to the owner decisions in [the beta scope](docs/BETA-SCOPE.md).
 - A fast editor for changing a mode and a visual advanced editor built from safe, allow-listed rules.
 - Player-selected play radius from 100 to 3,000 metres, entered as any whole-metre value.
 - Explicitly opt-in location, collected only for an active match and stopped when it ends.
@@ -31,11 +31,27 @@ The first product is a responsive website. A native Android client follows for r
 
 ## Project state
 
-This repository contains the product and architecture foundation only. No game client, server, database schema, dependencies or deploy configuration has been implemented. Decisions that need product, legal, operational or usability review are called out in the documents. HUNTZONE is the working project name; domain, store listing and trademark availability must be checked before commercial publication.
+The repository contains a React/TypeScript/Vite frontend prototype and the first independent `packages/game-core` slice. The frontend's lobby, roster, roles, map, timer, captures and results are local simulations; only CLASSIC is playable in that demo. The game-core registry contains all six beta mode IDs, but each rule set is explicitly marked `proposal`; the package currently supports config validation and pure lobby transitions only. It does not start or adjudicate matches.
 
-## MVP direction
+There is no multiplayer backend, database, WebSocket service, real GPS integration, authentication service, real map provider, or Android client yet. Do not describe the current site as a real game or beta. Product, rules, privacy, legal, operational and playtest decisions remain open and are listed in [BETA-SCOPE.md](docs/BETA-SCOPE.md). HUNTZONE is the working project name; domain, store listing and trademark availability must be checked before commercial publication.
 
-The first milestone is a playable private web match of CLASSIC HIDE & SEEK: create/join, lobby, roles, timer, map, browser GPS, server-validated capture, results and reconnect. Android background location and advanced/public mode creation follow later. The initial engine must persist match outcomes safely and reserve versioned extension points for future mechanics, without implementing those later features prematurely.
+### Run the local prototype
+
+Use Node.js 22 and npm:
+
+```bash
+npm ci
+npm run dev
+npm run test
+npm run typecheck
+npm run build
+```
+
+The browser UI is a local demo only. `npm run build` targets `/` for local use and Cloudflare Pages. `npm run build:github-pages` targets `/HUNTZONE/` for the project site. See [the beta implementation plan](docs/BETA-IMPLEMENTATION-PLAN.md) for the staged backend, GPS, Android and six-mode work.
+
+## Beta direction
+
+The beta target is a controlled private multiplayer release with all six modes, an authoritative server, durable virtual state, consented real GPS, web and native Android clients, reconnect, and safety/privacy controls. It follows the gates in [BETA-IMPLEMENTATION-PLAN.md](docs/BETA-IMPLEMENTATION-PLAN.md); no single milestone or mock screen satisfies the beta definition. Public matchmaking, chat, public custom modes, iOS, monetization and GPS history remain out of scope.
 
 ## Working with AI coding tools
 

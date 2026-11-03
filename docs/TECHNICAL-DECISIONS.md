@@ -45,3 +45,31 @@ For each material change, record: ID/date, decision owner, context, options, evi
 - Map provider use can be metered differently by product; see [Mapbox map product billing overview](https://docs.mapbox.com/help/getting-started/maps/). Recheck current provider prices, terms, coverage and regional constraints before contracting.
 
 Recheck platform rules, app-store policies, provider terms and current service pricing at the time of implementation and release.
+
+## Beta architecture decision — 2026-11-03
+
+**Status:** architecture direction accepted for implementation planning; deployment provider, region, budget and operational owner remain open. Do not provision paid services in this milestone.
+
+### Backend runtime comparison
+
+| Option | Fit for HUNTZONE | Operational cost/limits | Decision |
+|---|---|---|---|
+| Fastify on supported Node.js LTS | TypeScript-first HTTP/WebSocket service; plugin encapsulation; direct integration with PostgreSQL/PostGIS and the TypeScript core. Small, explicit service boundaries fit the current team and keep runtime portable. | Own deployment, health, scaling, TLS, WebSocket draining, connection pooling, secrets, alerts and recovery. Compute/database cost depends on concurrent matches, update rates, region and retention; model before purchase. | **Recommended for API/realtime.** Keep one logical match actor per match; persist accepted transitions before ACK. |
+| NestJS on Node.js | Modules, dependency injection, guards and conventions can help a larger team organize a broad service. WebSocket gateways and a Fastify adapter are available. | More framework conventions and learning/maintenance overhead for a small service; adapters still need explicit lifecycle and persistence design. It does not remove the need for an authoritative actor or transaction boundaries. | Viable if the team grows or the service becomes multi-team. No need to adopt it solely for theoretical scale. |
+| Cloudflare Workers + Durable Objects | A Durable Object can be one coordinator per match and supports WebSockets, including hibernation while connected clients remain open. It is a credible match-local state alternative. | Runtime CPU/memory/subrequest limits; hibernation evicts in-memory state, requiring restoration; storage, global identity, PostgreSQL/PostGIS integration, backup and transaction boundaries need a separate design. Cost varies with requests, CPU, storage and plan; estimate against real load/idle patterns. | **Not selected for this beta backend.** The existing Cloudflare Pages frontend does not make Workers/DO the default. Revisit after a technical spike and cost model if evidence supports it. |
+
+Fastify is the first API recommendation because it preserves Node/PostgreSQL portability, keeps the TypeScript engine independent, and has less framework ceremony than NestJS for the initial service. This does not select a hosting vendor. The database/API hosting provider remains open; no account, paid resource or secret is created here.
+
+Cloudflare documents Durable Object WebSocket hibernation and coordinator use, but hibernation evicts in-memory state and requires explicit restoration; the runtime has finite CPU and memory limits. Reassess current limits/pricing before an implementation spike: [Durable Object WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [pricing](https://developers.cloudflare.com/workers/platform/pricing/). Fastify and Nest references: [Fastify TypeScript plugins](https://fastify.dev/docs/latest/Reference/TypeScript/), [Nest platform adapters](https://docs.nestjs.com/techniques/performance).
+
+### Repository boundary
+
+The long-term target is `apps/web`, `apps/api`, `apps/android`, `packages/game-core`, and `packages/contracts`. The root Vite app stays in place during this review because active Pages integrations build from `/`; move it only with a reviewed Cloudflare/GitHub Pages settings change. `packages/game-core` begins independently and imports no browser, framework, network, or database APIs.
+
+### Data and protocol direction
+
+Use versioned strict JSON contracts. HTTP creates short-lived guest sessions/lobbies and provides snapshots/fallback commands; authenticated WebSocket commands carry `commandId`, `matchId`, `expectedRevision`, type and bounded payload. The server verifies actor/membership/phase, commits event + revision + checkpoint transactionally, then ACKs and publishes filtered deltas. Repeated command IDs return the committed outcome. PostgreSQL is durable source; PostGIS supports vetted boundaries. Exact coordinates remain volatile match-owner memory and are omitted from durable records and logs. See [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md) for the proposed endpoints and schemas.
+
+### GPS/mobile boundary
+
+Web uses consented foreground `watchPosition()` only during an active match and exposes accuracy/age/degraded state. Android starts a location foreground service from a visible user action with an ongoing notification. Do not request Android background-location permission unless a tested requirement cannot otherwise be met and a current Play policy review supports it. Recheck current rules before implementation/submission: [Android location permissions](https://developer.android.com/develop/sensors-and-location/location/permissions), [foreground-service start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start), [background-location guidance](https://developer.android.com/develop/sensors-and-location/location/background).

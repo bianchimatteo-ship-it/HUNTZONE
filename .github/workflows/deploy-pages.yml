@@ -31,6 +31,8 @@ jobs:
         run: npm ci
       - name: Run interaction tests
         run: npm run test
+      - name: Typecheck frontend and game core
+        run: npm run typecheck
       - name: Build
         run: npm run build:github-pages
       - name: Upload Pages artifact

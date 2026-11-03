@@ -1,6 +1,13 @@
 # HUNTZONE — Roadmap
 
-Sequence is dependency-based; dates and estimates follow discovery and team capacity. The current repository is a documentation foundation only.
+Sequence is dependency-based; dates and estimates follow discovery and team capacity. The original phased mode rollout below has been superseded by the owner's confirmed beta target: all six modes must be playable before the beta gate. Earlier sequencing remains historical rationale for dependencies, not permission to ship a Classic-only beta.
+
+## Current status — 2026-11-03
+
+- The root React/TypeScript/Vite frontend is a local simulation, not a multiplayer client.
+- The initial framework-independent `packages/game-core` slice contains the six-mode proposal registry, config validation, and deterministic lobby commands only. No mode can start because gameplay rules are not approved.
+- Milestone 0 audit/scope is documented in [BETA-SCOPE.md](BETA-SCOPE.md) and [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md).
+- Next gate: owner review of proposed role, objective, terminal, and disconnect rules for every mode before gameplay adjudication is implemented.
 
 ## Phase 0 — Validate the foundation
 
@@ -11,10 +18,10 @@ Sequence is dependency-based; dates and estimates follow discovery and team capa
 
 **Gate:** approve the MVP mode/rules, location visibility model, capture policy, account approach, hosting budget and launch audience.
 
-## Phase 1 — Web MVP, controlled private matches
+## Phase 1 — Web MVP foundation, controlled private matches
 
 - Responsive web app, guest join, private room code/link and basic profile.
-- CLASSIC HIDE & SEEK only, server-authoritative lifecycle, roles, timer, capture validation, reconnect and results.
+- All six beta modes are required. Build a shared server-authoritative lifecycle and game engine, then implement and test the six approved mode policies; do not stop at Classic-only delivery.
 - Map with either host-GPS-centred (after consent) or manually pinned centre, boundary, and arbitrary 100–3,000 m integer radius.
 - Foreground browser location only, consent and clear degraded/stale states.
 - One safe default capture rule, minimal host controls, pause/cancel, forbidden-area exclusions and report.
@@ -25,10 +32,10 @@ Sequence is dependency-based; dates and estimates follow discovery and team capa
 
 **Playable means:** at least one real end-to-end private match flow has been field exercised with the supported browser/location behavior, server adjudication, reconnect and result recovery. Paper prototypes or mocks alone do not meet this gate. Use a safe controlled public venue and consenting adult participants for the first pilot unless a reviewed age/safeguarding plan says otherwise.
 
-## Phase 2 — Reliability and official mode presets
+## Phase 2 — Reliability and approved mode completeness
 
 - Improve recovery, observability, load handling and host handoff.
-- Add MANHUNT, INFECTED, TEAM HUNT and SURVIVAL as validated configurations of the shared engine.
+- Complete all six approved beta modes as validated configurations of the shared engine. The mode list in this older phase description is not a deferred release gate.
 - Add saved quick-editor variants and mode version pinning; keep advanced visual composition for Phase 4.
 - Evaluate moderation operations before enabling broader public rooms.
 
@@ -39,7 +46,7 @@ Sequence is dependency-based; dates and estimates follow discovery and team capa
 - Test screen-off behavior, process recreation, power use, permission withdrawal, reconnect and platform policy.
 - Publish only after the background-location use case and store requirements are reviewed.
 
-## Phase 4 — Advanced editor and social modes
+## Phase 4 — Advanced editor and social modes (post-beta)
 
 - Add validated visual rule composition, bounded IR, test/simulation preview, save/version/share and moderation controls.
 - Pilot TASKS & DECEPTION and dynamic events with private groups.
@@ -58,9 +65,9 @@ Product and safety decisions → server-authoritative match protocol → privacy
 
 ## Design now vs implementation later
 
-| Define before MVP coding | Implement in MVP | Keep as a compatible extension point; implement later |
+| Define before beta gameplay | Implement in beta | Keep as a compatible extension point; implement later |
 |---|---|---|
-| Match lifecycle, command/revision/idempotency contract; checkpoint/event versioning and recovery; immutable mode/engine versions; privacy-filtered state projections; role/team state model; extensible bounded rule vocabulary; no-coordinate persistence policy | CLASSIC HIDE & SEEK only; one role preset; one tested capture path; lobby, timer, map, browser GPS, reconnect, result; single-region PostgreSQL persistence and recovery; manual host-pinned or consented GPS centre; basic forbidden-area exclusion | Advanced visual editor UI; missions beyond a simple typed objective interface; traitors/sabotage; dynamic events; Android background GPS; iOS; public modes; community publishing; progression; distributed event bus and multi-region sharding |
+| Approved rules for six modes; match lifecycle, command/revision/idempotency contract; checkpoint/event versioning and recovery; immutable mode/engine versions; privacy-filtered projections; role/team model; bounded rule vocabulary; no-coordinate persistence policy | All six approved modes; lobby, timer, real map, consented browser GPS, server-validated outcomes, reconnect and results; single-region PostgreSQL/PostGIS persistence and recovery; native Android foreground location client; basic forbidden-area exclusions | Advanced visual editor UI; public mode publishing; public matchmaking/social features; progression; iOS; distributed event bus and multi-region sharding |
 
 Do not build generic abstractions for hypothetical mechanics. Define the state/version and extension boundaries now, then add operators and screens only when their phase is funded and specified. Recovery should work in the first web MVP, not be deferred to a later reliability phase.
 
