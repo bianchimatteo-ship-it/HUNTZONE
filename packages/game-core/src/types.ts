@@ -52,6 +52,8 @@ export type Transition = {
 export type GameCoreError = {
   code:
     | 'INVALID_CONFIG'
+    | 'INVALID_CAPTURE_POLICY'
+    | 'INVALID_ROLE_ASSIGNMENT'
     | 'INVALID_COMMAND'
     | 'STALE_REVISION'
     | 'WRONG_PHASE'

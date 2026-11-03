@@ -14,6 +14,23 @@ beforeEach(() => {
 });
 
 describe('HUNTZONE local demo flow', () => {
+  it('shows capture and role policies as an unapplied local preview', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /CREA PARTITA/i }));
+    const pin = screen.getByRole('radio', { name: /PIN personale/i });
+    const manual = screen.getByRole('radio', { name: /^Manuale/i });
+    await user.click(pin);
+    await user.click(manual);
+
+    expect(pin).toHaveProperty('checked', true);
+    expect(manual).toHaveProperty('checked', true);
+    expect(screen.getByText(/Non influenzano la simulazione/i)).toBeTruthy();
+    expect(screen.getByText(/soglie numeriche sono ancora da approvare/i)).toBeTruthy();
+    expect(localStorage.getItem('huntzone.demo.config')).toContain('"captureMethod":"pin"');
+  });
+
   it('creates a configured lobby, simulates a capture, ends the match and allows a rematch', async () => {
     const user = userEvent.setup();
     render(<App />);

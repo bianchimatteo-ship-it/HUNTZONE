@@ -46,6 +46,10 @@ Use a dark base, high-contrast text and a small set of semantic accent colors: r
 
 The HUNTZONE wordmark and icon are unapproved. Keep the logo area as a replaceable asset slot until visual identity review.
 
+## Current prototype implementation — 2026-11-03
+
+The redesigned local prototype uses the navigation/screens above as an interaction preview. Its creation screen displays the approved capture and assignment choices but labels them as locally saved, unapplied policy previews. It requests no location and does not connect participants. The current UI remains a simulation; the policy selectors are not a service configuration surface. Typography uses a 16 px body baseline, 12–14 px metadata, responsive card/map layouts, 44 px or larger controls, safe-area-aware mobile navigation and reduced-motion support.
+
 ## States and feedback
 
 Every network- or location-dependent screen needs loading, empty, permission denied, unavailable, stale, reconnecting, error and success states. On the active map, make stale position age explicit and visually distinct from a current observation. Keep host pause/cancel actions easy to find; confirm destructive match cancellation with a concise consequence. For location withdrawal, tell the player what happens to their match slot before confirming.

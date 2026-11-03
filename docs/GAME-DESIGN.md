@@ -33,6 +33,14 @@ These are presets over a common engine, not separately hard-coded applications.
 
 ## Configurable mechanics
 
+### Approved capture and assignment choices
+
+Every lobby selects one compatible capture policy: **RAGGIO** (authorized player requests a capture, server verifies both fresh/accurate positions and distance), **PIN** (target's temporary personal PIN plus the same mandatory server GPS verification, limited attempts and one-use invalidation), or **AUTOMATICA** (server-confirmed proximity maintained for a configured dwell period). A PIN alone is never a capture. The server owns the result; clients submit intent and cannot decide distance or outcome. Exact coordinates remain volatile server state.
+
+Each lobby also selects **RANDOM** or **MANUAL** role/team assignment where its approved mode permits it. RANDOM is generated server-side and cannot be client-seeded. MANUAL lets the lobby administrator assign each participant before start; disclose that the administrator will know the secret roles they assign. Validate complete role/team slots on the server, clear READY only for participants whose assignment changes, and freeze assignments once countdown starts. Unauthorized player views never receive secret roles; a host does not learn secret RANDOM roles simply by hosting.
+
+The systems are approved; numeric thresholds, per-mode compatibility and gameplay outcomes are not. See [BETA-SCOPE.md](BETA-SCOPE.md) for the ordered owner decisions. The current core evaluates evidence and policy state but does not adjudicate a match or issue real PINs.
+
 Mode configuration may enable: manual or automatic capture, distance validation, radar scans, proximity alerts, abilities, virtual freeze, temporary boosts, decoy GPS pings, missions, extraction points, dynamic zones, eliminations, revival, penalties and random events. Every mechanic declares its parameters, permissions, cooldown, duration, visibility and compatible match states.
 
 Freeze blocks virtual actions only. It never blocks physical movement. A decoy ping is a clearly defined in-game false signal; it must not alter, spoof or write device location. Scans and alerts disclose only the minimum information allowed by the mode. Effects should be brief, visible to affected players and testable by the server.

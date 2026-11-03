@@ -62,6 +62,8 @@ Repeat with database connection loss, failover and a restored backup. The backup
 
 ## Six-mode beta gate
 
+All capture and assignment checks also run through the shared core suite: policy validation rejects missing PIN protections/automatic dwell and unknown fields; old, future, out-of-sequence, inaccurate, or insufficiently close GPS evidence is indeterminate; PIN attempts expire, lock at the configured cap, and invalidate after successful use; random roles are complete and use an injected server-owned random source; manual roles satisfy every slot, only the host can edit before countdown, changed players lose READY, frozen roles reject edits, and secret-role projections are private. These tests validate pure policy behavior, not the security of an unimplemented transport or credential store.
+
 Run the shared lifecycle/authorization/idempotency/reconnect/timeout suite against every approved immutable mode version, plus these mode-specific cases:
 
 | Mode | Required mode-specific outcomes |

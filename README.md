@@ -31,7 +31,7 @@ The first product is a responsive website. A native Android client follows for r
 
 ## Project state
 
-The repository contains a React/TypeScript/Vite frontend prototype and the first independent `packages/game-core` slice. The frontend's lobby, roster, roles, map, timer, captures and results are local simulations; only CLASSIC is playable in that demo. The game-core registry contains all six beta mode IDs, but each rule set is explicitly marked `proposal`; the package currently supports config validation and pure lobby transitions only. It does not start or adjudicate matches.
+The repository contains a React/TypeScript/Vite frontend prototype and an independent `packages/game-core` policy foundation. The frontend's lobby, roster, roles, map, timer, captures and results are local simulations; only CLASSIC is playable in that demo. The core now validates capture-policy shapes, evaluates server-held GPS evidence, gates temporary PIN attempts, validates random/manual role slots, invalidates affected READY states, and builds role visibility projections. The registry still marks every mode `proposal`; the package does not start or adjudicate matches, and these primitives are not connected to a service.
 
 There is no multiplayer backend, database, WebSocket service, real GPS integration, authentication service, real map provider, or Android client yet. Do not describe the current site as a real game or beta. Product, rules, privacy, legal, operational and playtest decisions remain open and are listed in [BETA-SCOPE.md](docs/BETA-SCOPE.md). HUNTZONE is the working project name; domain, store listing and trademark availability must be checked before commercial publication.
 

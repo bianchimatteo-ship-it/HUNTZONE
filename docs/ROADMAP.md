@@ -5,9 +5,10 @@ Sequence is dependency-based; dates and estimates follow discovery and team capa
 ## Current status — 2026-11-03
 
 - The root React/TypeScript/Vite frontend is a local simulation, not a multiplayer client.
-- The initial framework-independent `packages/game-core` slice contains the six-mode proposal registry, config validation, and deterministic lobby commands only. No mode can start because gameplay rules are not approved.
-- Milestone 0 audit/scope is documented in [BETA-SCOPE.md](BETA-SCOPE.md) and [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md).
-- Next gate: owner review of proposed role, objective, terminal, and disconnect rules for every mode before gameplay adjudication is implemented.
+- `packages/game-core` contains capture-policy validation/evidence checks, bounded PIN attempt transitions, random/manual role-slot assignment, READY invalidation and secret-role projections, alongside lobby commands. No mode can start because gameplay rules are not approved; these primitives are not connected to a server.
+- Milestone 0 and owner-approved capture/assignment scope are documented in [BETA-SCOPE.md](BETA-SCOPE.md), [GAME-DESIGN.md](GAME-DESIGN.md) and [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md).
+- The mobile-first interface has a redesigned local demo flow. The policy selectors are an unapplied local preview; no GPS, API, or real multiplayer is present.
+- Next gate: owner review of the prioritized rules and thresholds before completing the mode engine; in parallel, define backend identity/session and deployment ownership without creating paid resources.
 
 ## Phase 0 — Validate the foundation
 

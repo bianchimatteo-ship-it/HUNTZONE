@@ -46,6 +46,16 @@ For each material change, record: ID/date, decision owner, context, options, evi
 
 Recheck platform rules, app-store policies, provider terms and current service pricing at the time of implementation and release.
 
+## Owner-approved capture and assignment systems — 2026-11-03
+
+**Decision owner:** HUNTZONE product owner. **Status:** systems approved; per-mode compatibility and numeric tuning remain open.
+
+- Every compatible match selects **RAGGIO**, **PIN**, or **AUTOMATICA**. Each capture requires authoritative server validation of fresh, accurate position evidence for the involved players. PIN is a short-lived personal credential with a bounded attempt count and one-use invalidation; PIN alone never captures. Automatic capture also requires configured dwell time.
+- Every compatible lobby selects **RANDOM** or **MANUAL** role/team assignment. RANDOM is generated server-side. MANUAL is host-controlled before countdown, warns that the host will know roles assigned, validates complete slots, clears READY for changed players, and freezes assignments at countdown. Unauthorized snapshots omit secret roles.
+- Client actions express intent only; the server decides the outcome. Exact coordinates remain volatile and are excluded from durable records, logs and result payloads.
+
+The pure game-core now contains policy/config validators, GPS evidence eligibility, a PIN-attempt state transition, slot assignment, manual READY invalidation and role-view projection. It is not backed by API authentication, a CSPRNG adapter, hashed credential storage, persistence, GPS ingestion or network authorization. Numeric ceilings in the validator are explicitly temporary schema guardrails; see [BETA-SCOPE.md](BETA-SCOPE.md). These systems do not approve any of the six proposed rulesets.
+
 ## Beta architecture decision — 2026-11-03
 
 **Status:** architecture direction accepted for implementation planning; deployment provider, region, budget and operational owner remain open. Do not provision paid services in this milestone.

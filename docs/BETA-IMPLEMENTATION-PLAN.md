@@ -8,7 +8,7 @@
 - Record six mode proposals and unresolved rule choices in [BETA-SCOPE.md](BETA-SCOPE.md).
 - Compare backend options and record the framework recommendation in [TECHNICAL-DECISIONS.md](TECHNICAL-DECISIONS.md).
 - Define target repository packages, HTTP/WebSocket contracts, database plan, GPS plan, and acceptance gates here.
-- Keep the existing root Vite app deployable to GitHub Pages and Cloudflare Pages.
+- Keep the existing root Vite app deployable to Cloudflare Pages; GitHub Pages deployment is disabled because the repository Pages service is not configured. Keep its base-path build script as compatibility validation.
 
 ## Milestone 1 — Framework-independent game core (in progress)
 
@@ -20,11 +20,20 @@
 - Pure lobby creation/join/ready transitions with monotone revision, expected-revision checks, and command-ID deduplication.
 - Unit tests exercise every registry entry and lobby boundary/error behavior.
 
+### Policy extension delivered in this milestone
+
+- Validated policy shapes for RAGGIO, PIN and AUTOMATICA without choosing gameplay thresholds.
+- Server-held GPS evidence eligibility with age, sequence, accuracy, conservative range and optional automatic-dwell checks; the evaluator never decides a capture outcome and returns no coordinates.
+- A pure PIN attempt gate with expiry, configured finite attempts and one-use invalidation; no PIN generation, plaintext storage, credential delivery or real authentication exists yet.
+- Exact role-slot validation, injected-random assignment, manual host-only pre-start assignment with READY invalidation for changed players, and secret-role projection.
+- Tests cover these transitions and policy failure cases. All six mode rules remain proposals and cannot be started.
+
 ### Still required
 
 - Owner approval of mode-specific rules and numeric bounds.
 - Server-seeded role assignment, immutable mode-version pinning, start/countdown/active/pause/resolve transitions, timers, terminal evaluation, capture/conversion/elimination, and authorized projections.
 - Tests for every approved mode's normal, edge, duplicate, timeout, disconnect, and simultaneous-event behavior.
+- Backend enforcement, CSPRNG binding, PIN hashing/rate limiting, durable attempts and authenticated per-player projections.
 - Durable idempotency and checkpoint/replay belong to the backend integration, not in a client store.
 
 ## Milestone 2 — Backend protocol and persistence

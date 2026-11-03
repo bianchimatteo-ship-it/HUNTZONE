@@ -18,6 +18,8 @@ export type MatchConfig = {
   duration: number;
   teams: boolean;
   manualCapture: boolean;
+  captureMethod: 'radius' | 'pin' | 'automatic';
+  assignmentMethod: 'random' | 'manual';
   radar: boolean;
   missions: boolean;
   dynamicZones: boolean;

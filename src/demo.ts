@@ -7,6 +7,8 @@ export const defaultConfig: MatchConfig = {
   duration: 12,
   teams: false,
   manualCapture: true,
+  captureMethod: 'radius',
+  assignmentMethod: 'random',
   radar: true,
   missions: false,
   dynamicZones: false,

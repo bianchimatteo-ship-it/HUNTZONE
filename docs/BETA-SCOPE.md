@@ -19,6 +19,28 @@ The existing `huntzone-review.pages.dev` frontend remains a static Cloudflare Pa
 - Guest identity, invite access, commands, hidden roles, missions, results, timers, and reconnect state are server-authoritative.
 - Mode rules are bounded, versioned data. No arbitrary user-authored code is evaluated.
 
+## Owner-approved capture and role-assignment systems — 2026-11-03
+
+These system choices are approved. They do **not** approve a mode's role permissions, numeric values, or win conditions; those remain open below.
+
+### Capture system selected per match
+
+| System | Approved behavior | Still open |
+|---|---|---|
+| **RAGGIO** | An authorized player requests a virtual capture. The server checks both players' server-held GPS observations, range, accuracy and freshness before adjudicating. | Distance threshold, accuracy/freshness thresholds, confirmation/dispute flow and compatible roles per mode. |
+| **PIN** | Each player gets a personal temporary match PIN. A hunter enters a target's PIN, but the server must also verify GPS proximity; PIN alone never captures. Expiry, limited attempts and one-use invalidation are required. | PIN length/format, expiry, attempt count, delivery/display, recovery and capture distance/quality values. |
+| **AUTOMATICA** | The server evaluates opposing players' proximity and makes the virtual capture only after configured range, GPS-quality and minimum-dwell conditions are met. | Range, quality thresholds, dwell duration, hysteresis and compatible roles per mode. |
+
+Clients submit intent only. No client can adjudicate capture, derive a trusted distance, or bypass GPS with a PIN. An uncertain sample returns a retry/indeterminate state, never an assumed capture. Exact coordinates stay volatile and are not included in logs, durable state, events, results, or other players' projections.
+
+### Role and team assignment selected per lobby
+
+- **RANDOM:** the server generates and validates the assignment under that mode's role/team slots. The client cannot seed or alter the result. Secret roles are visible only to authorized recipients.
+- **MANUAL:** the lobby administrator assigns every participant's role/team before the start. The UI must warn that this reveals the secret roles they assign. The server validates all slots; only affected READY confirmations are cleared after an assignment change. Start freezes the complete assignment, and later arbitrary edits are rejected.
+- Player-facing snapshots are authorization-filtered. A manually assigning host is an explicitly informed exception for secret roles they assigned; a host does not gain hidden roles solely by being host when RANDOM is used.
+
+The core now contains pure validators/evaluators for these policy shapes, a capped PIN-attempt state transition, role-slot assignment, manual READY invalidation and role projections. They are reusable policy primitives, not a running service. The mode registry remains `proposal`; the current local UI only saves a selection in browser storage and explicitly labels it as an unapplied preview.
+
 ## Concrete mode proposals
 
 The current prototype's concept-card player ranges inform the proposals; they are not approved limits. Shared values and outcomes must be confirmed before a mode can be marked executable. The current game-core registry labels every entry `proposal` and is not a playable ruleset.
@@ -44,14 +66,24 @@ These proposals are intentionally specific enough to review, but remain **unconf
 - A timeout with equal eligible outcomes returns a draw; this is a proposal pending per-mode review.
 - Account age policy, initial test group, hosting region, match-result retention, incident owner, and operational pause window remain release gates.
 
-## Decisions required before full mode engine implementation
+### Temporary policy-schema guardrails (not gameplay approvals)
 
-1. Approve or replace each row's role ratios, limits, objective, capture/conversion behavior, timer result and tie rule.
-2. Choose Classic capture target and confirmation/dispute path.
-3. Confirm whether TEAM HUNT permits revival and how teams are balanced.
-4. Confirm TASKS & DECEPTION objectives and whether a non-chat accusation/vote mechanic is in scope.
-5. Confirm mode-specific behavior on leave, disconnect, GPS withdrawal, and loss of GPS quality.
-6. Confirm the proposed radius/duration bounds and beta roster limits.
+The current validator caps capture distance/accuracy at 3,000 m, sample age and automatic dwell at 3,600 s, PIN expiry at 86,400 s and attempts at 10. These are defensive schema ceilings to reject unbounded inputs, not recommended match settings or owner-approved gameplay thresholds. Confirm or replace them before a deployed API treats them as product constraints.
+
+## Ordered owner decisions still required
+
+Approved systems above are fixed. The following choices are still proposals; the suggested defaults are for owner review only.
+
+| Priority | Decision | Alternatives | Consequence | Suggested proposal |
+|---|---|---|---|---|
+| 1 | Per-mode role/team slots, compatibility with each capture system, win thresholds, timer result, and join limits | Approve/replace each concrete mode row; restrict each mode to one capture system or allow all compatible systems | Defines actual match balance, legal actions, and whether a lobby can start | Review each mode's row individually; initially expose only capture systems whose role permissions are fully specified. No mode is startable until its full ruleset is approved. |
+| 2 | Capture distance, maximum accuracy, maximum sample age, automatic dwell/hysteresis | Tune in safe stationary/walking pilots; use a conservative first range or offer a small set of presets | Too permissive causes false captures; too strict frustrates play; freshness affects battery/network load | Keep as required, versioned per-mode settings with no silent defaults; pilot conservative values and measure false positives/negatives before fixing them. |
+| 3 | PIN format, validity window, tries, display/delivery, recovery | Short numeric PIN vs longer alphanumeric code; per-target cap vs per-match cap; reveal on request vs pre-match | Convenience trades off against guessing, shoulder-surfing and support burden | Use a server-generated, hashed, match-scoped one-use credential; short expiry; small attempt cap; rate-limit actor and match; never store/log plaintext. Numeric values await approval/security review. |
+| 4 | RAGGIO confirmation and disputed captures | One authorized hunter action; target acknowledgement; short contest window | Confirmation can reduce false positives but slow play | Begin with one server-validated hunter request and target notification; add dispute flow only if pilot evidence supports it. |
+| 5 | Role assignment rules for each mode and host visibility | Mode-specific random counts; balanced random teams; constrained manual choice; allow/disallow host manual setup | Manual setup reveals hidden roles to assigning host; random setup requires auditable server randomness | Keep RANDOM and MANUAL where the approved mode permits; warn the host before manual assignment; use server CSPRNG; filter unauthorized snapshots. |
+| 6 | Disconnect, leave, GPS withdrawal and missing-quality behavior per mode | Pause; neutralize/withdraw; host remove; cancel; resume during grace window | Changes fairness and privacy pressure; a disconnect must never silently become capture | Clear exact samples immediately; do not count withdrawal/disconnect as capture; pause or apply explicitly approved neutralized state. Require fresh samples after reconnect. |
+| 7 | Gameplay in all six proposed loops (Classic goal/hide phase; Manhunt ratio; Infected conversion; Team Hunt teams/revival; Survival scoring; Tasks objectives/vote/tie) | Approve or replace each mode proposal in the table above | Engine code could encode unintended gameplay and tests could validate the wrong product | Approve each mode-specific rulesheet before marking it executable. Keep Tasks & Deception free of public chat. |
+| 8 | Shared duration bounds, roster minimums and result retention | Current prototype bounds vs narrower pilot bounds; minimal result retention vs longer personal statistics | Impacts usability, retention and lifecycle recovery | Confirm bounds and short documented result retention; never retain precise GPS route history by default. |
 
 Until those decisions are recorded, the game-core package may validate configurations and maintain lobby state only. It must reject attempts to start a mode whose `rulesStatus` is not approved.
 
