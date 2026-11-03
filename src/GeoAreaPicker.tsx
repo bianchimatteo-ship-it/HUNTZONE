@@ -1,11 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import type { GeoCoordinate, LocationSnapshot, LocationTracker } from './location/geolocation';
-import { createLocationTracker } from './location/geolocation';
+import { useState } from 'react';
+import type { GeoCoordinate, LocationSnapshot } from './location/geolocation';
+import { useLocation } from './location/LocationProvider';
 import StadiaMap from './map/StadiaMap';
-
-const initialLocation: LocationSnapshot = {
-  status: 'NOT_REQUESTED', sample: null, ageMs: null, message: 'La posizione non è stata richiesta.',
-};
 
 function formatAge(ageMs: number | null): string {
   if (ageMs === null) return '—';
@@ -34,56 +30,8 @@ export default function GeoAreaPicker({
   radiusMeters: number;
   onCenterChange: (center: GeoCoordinate | null, source: 'map' | 'device' | null) => void;
 }) {
-  const [location, setLocation] = useState(initialLocation);
+  const location = useLocation();
   const [focusCommand, setFocusCommand] = useState<{ point: GeoCoordinate; token: number } | null>(null);
-  const trackerRef = useRef<LocationTracker | null>(null);
-  const permissionRef = useRef<PermissionStatus | null>(null);
-  const permissionHandlerRef = useRef<(() => void) | null>(null);
-  const aliveRef = useRef(true);
-
-  useEffect(() => {
-    aliveRef.current = true;
-    const tracker = createLocationTracker(setLocation);
-    trackerRef.current = tracker;
-    return () => {
-      aliveRef.current = false;
-      if (permissionRef.current && permissionHandlerRef.current) permissionRef.current.removeEventListener('change', permissionHandlerRef.current);
-      permissionRef.current = null;
-      permissionHandlerRef.current = null;
-      tracker.dispose();
-      trackerRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (location.status !== 'ACTIVE' && location.status !== 'STALE') return;
-    const timer = window.setInterval(() => trackerRef.current?.refresh(), 1000);
-    const onVisibilityChange = () => trackerRef.current?.refresh();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [location.status]);
-
-  async function activateLocation() {
-    const tracker = trackerRef.current;
-    tracker?.start();
-    if (!tracker) return;
-    if (!navigator.permissions?.query) return;
-    try {
-      const permission = await navigator.permissions.query({ name: 'geolocation' });
-      if (!aliveRef.current) return;
-      if (permissionRef.current && permissionHandlerRef.current) permissionRef.current.removeEventListener('change', permissionHandlerRef.current);
-      permissionRef.current = permission;
-      const handler = () => tracker.permissionChanged(permission.state);
-      permissionHandlerRef.current = handler;
-      permission.addEventListener('change', handler);
-      tracker.permissionChanged(permission.state);
-    } catch {
-      // Some browsers do not expose the Permissions API; watchPosition still reports denial.
-    }
-  }
 
   function centerMapOnDevice() {
     if (!location.sample) return;
@@ -94,13 +42,6 @@ export default function GeoAreaPicker({
     if (!location.sample || location.status !== 'ACTIVE') return;
     onCenterChange({ latitude: location.sample.latitude, longitude: location.sample.longitude }, 'device');
     centerMapOnDevice();
-  }
-
-  function stopLocation() {
-    if (permissionRef.current && permissionHandlerRef.current) permissionRef.current.removeEventListener('change', permissionHandlerRef.current);
-    permissionRef.current = null;
-    permissionHandlerRef.current = null;
-    trackerRef.current?.stop();
   }
 
   const canTrack = !['REQUESTING', 'ACTIVE', 'STALE', 'UNSUPPORTED'].includes(location.status);
@@ -129,10 +70,10 @@ export default function GeoAreaPicker({
         {location.sample && <div className="location-metrics"><span>PRECISIONE DICHIARATA <b>±{Math.round(location.sample.accuracyMeters)} m</b></span><span>ULTIMO CAMPIONE <b>{formatTime(location.sample.timestampMs)}</b></span><span>ETÀ <b>{formatAge(location.ageMs)}</b></span></div>}
       </div>
       <div className="location-actions">
-        <button type="button" className="button button--primary" onClick={activateLocation} disabled={!canTrack}><span>{location.status === 'DENIED' ? 'RIPROVA POSIZIONE' : 'ATTIVA POSIZIONE'}</span><b>⌖</b></button>
+        <button type="button" className="button button--primary" onClick={location.start} disabled={!canTrack}><span>{location.status === 'DENIED' ? 'RIPROVA POSIZIONE' : 'ATTIVA POSIZIONE'}</span><b>⌖</b></button>
         <button type="button" className="button button--ghost" onClick={centerMapOnDevice} disabled={!location.sample}><span>CENTRA MAPPA</span></button>
         <button type="button" className="button button--ghost" onClick={useDeviceAsCenter} disabled={!location.sample || location.status !== 'ACTIVE'}><span>USA POSIZIONE COME CENTRO</span></button>
-        <button type="button" className="button button--stop" onClick={stopLocation} disabled={!['REQUESTING', 'ACTIVE', 'STALE'].includes(location.status)}><span>STOP GPS</span></button>
+        <button type="button" className="button button--stop" onClick={location.stop} disabled={!['REQUESTING', 'ACTIVE', 'STALE'].includes(location.status)}><span>STOP GPS</span></button>
       </div>
       {location.sample && <details className="location-diagnostics"><summary>DIAGNOSTICA TECNICA · COORDINATE</summary><code>lat {location.sample.latitude.toFixed(6)} · lon {location.sample.longitude.toFixed(6)}</code></details>}
     </div>

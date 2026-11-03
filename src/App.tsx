@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import CityMap from './CityMap';
 import GeoAreaPicker from './GeoAreaPicker';
+import MatchAreaMap from './map/MatchAreaMap';
 import { formatTime, loadSavedConfig, makeMatch, makePlayers, modeCards, saveConfig } from './demo';
 import type { GeoCoordinate } from './location/geolocation';
+import { useLocation } from './location/LocationProvider';
 import type { DemoMatch, MatchConfig, Player, Screen } from './types';
 
 const navItems: { id: Screen; icon: string; label: string }[] = [
@@ -20,7 +22,11 @@ function Icon({ children }: { children: string }) { return <span className="icon
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(readRoute);
+  const screenRef = useRef(screen);
+  const location = useLocation();
   const [config, setConfig] = useState<MatchConfig>(loadSavedConfig);
+  const [areaCenter, setAreaCenter] = useState<GeoCoordinate | null>(null);
+  const [centerSource, setCenterSource] = useState<'map' | 'device' | null>(null);
   const [match, setMatch] = useState<DemoMatch | null>(null);
   const [toast, setToast] = useState('');
   const [joinCode, setJoinCode] = useState('');
@@ -29,17 +35,27 @@ export default function App() {
   const [result, setResult] = useState<{ winner: string; elapsed: string } | null>(null);
   const [gameRoleView, setGameRoleView] = useState<'hunter' | 'runner'>('runner');
 
-  const go = (next: Screen) => {
+  function transitionTo(next: Screen) {
+    const previous = screenRef.current;
+    const permitted = (previous === 'create' && next === 'lobby')
+      || (previous === 'lobby' && next === 'game')
+      || (previous === 'game' && next === 'results');
+    if (previous !== next && ['create', 'lobby', 'game'].includes(previous) && !permitted) location.stop();
+    screenRef.current = next;
     setScreen(next);
-    location.hash = `/${next}`;
+  }
+
+  const go = (next: Screen) => {
+    transitionTo(next);
+    window.location.hash = `/${next}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   useEffect(() => {
-    const onHash = () => setScreen(readRoute());
+    const onHash = () => transitionTo(readRoute());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  }, [location.stop]);
 
   useEffect(() => {
     if (!toast) return;
@@ -74,7 +90,7 @@ export default function App() {
   }
 
   function createLobby() {
-    const demo = makeMatch(config);
+    const demo = makeMatch(config, areaCenter, centerSource);
     setMatch(demo);
     setJoinError('');
     go('lobby');
@@ -100,6 +116,7 @@ export default function App() {
   }
 
   function finishGame(state: DemoMatch, winningSide?: string) {
+    location.stop();
     const winner = winningSide ?? (state.players.filter(player => !player.captured).length > 1 ? 'RUNNERS' : 'HUNTERS');
     const elapsed = formatTime(state.config.duration * 60 - state.secondsLeft);
     setResult({ winner, elapsed });
@@ -162,7 +179,7 @@ export default function App() {
       <div className="content-wrap">
         {screen === 'home' && <Home go={go} joinCode={joinCode} setJoinCode={setJoinCode} joinLobby={joinLobby} joinError={joinError} />}
         {screen === 'modes' && <Modes go={go} updateConfig={updateConfig} />}
-        {screen === 'create' && <Create config={config} updateConfig={updateConfig} advanced={advanced} setAdvanced={setAdvanced} createLobby={createLobby} />}
+        {screen === 'create' && <Create config={config} updateConfig={updateConfig} advanced={advanced} setAdvanced={setAdvanced} createLobby={createLobby} areaCenter={areaCenter} centerSource={centerSource} setAreaCenter={setAreaCenter} setCenterSource={setCenterSource} />}
         {screen === 'lobby' && match && <Lobby match={match} addPlayer={addDemoPlayer} toggleReady={toggleReady} startGame={startGame} copyCode={() => { navigator.clipboard?.writeText(match.code); setToast('Codice copiato'); }} />}
         {screen === 'game' && match && <Game match={match} roleView={gameRoleView} setRoleView={setGameRoleView} remaining={remaining} capturedCount={capturedCount} capturePlayer={capturePlayer} toggleRadar={() => { setMatch({ ...match, radarActive: !match.radarActive, events: ['RADAR PULSE / DEMO', ...match.events].slice(0, 4) }); setToast(match.radarActive ? 'Radar disattivato' : 'Impulso radar simulato'); }} completeMission={() => { setMatch({ ...match, missionComplete: true, events: ['MISSION COMPLETE / DEMO', ...match.events].slice(0, 4) }); setToast('Obiettivo completato nella demo'); }} endGame={() => finishGame(match)} />}
         {screen === 'results' && <Results result={result} match={match} rematch={rematch} go={go} />}
@@ -215,9 +232,7 @@ function Modes({ go, updateConfig }: { go: (screen: Screen) => void; updateConfi
   </div>;
 }
 
-function Create({ config, updateConfig, advanced, setAdvanced, createLobby }: { config: MatchConfig; updateConfig: (patch: Partial<MatchConfig>) => void; advanced: boolean; setAdvanced: (value: boolean) => void; createLobby: () => void }) {
-  const [areaCenter, setAreaCenter] = useState<GeoCoordinate | null>(null);
-  const [centerSource, setCenterSource] = useState<'map' | 'device' | null>(null);
+function Create({ config, updateConfig, advanced, setAdvanced, createLobby, areaCenter, centerSource, setAreaCenter, setCenterSource }: { config: MatchConfig; updateConfig: (patch: Partial<MatchConfig>) => void; advanced: boolean; setAdvanced: (value: boolean) => void; createLobby: () => void; areaCenter: GeoCoordinate | null; centerSource: 'map' | 'device' | null; setAreaCenter: (center: GeoCoordinate | null) => void; setCenterSource: (source: 'map' | 'device' | null) => void }) {
   const clampRadius = (value: number) => updateConfig({ radius: Math.max(100, Math.min(3000, Math.round(value || 100))) });
   return <div className="screen-stack"><PageTitle index="02 / LOBBY SETUP" title="Prepara il campo." desc="Bastano due scelte per iniziare. Le opzioni avanzate sono facoltative." />
     <div className="create-layout"><div className="create-main">
@@ -239,7 +254,7 @@ function Toggle({ label, detail, value, onChange }: { label: string; detail: str
 function Lobby({ match, addPlayer, toggleReady, startGame, copyCode }: { match: DemoMatch; addPlayer: () => void; toggleReady: (id: string) => void; startGame: () => void; copyCode: () => void }) {
   const readyCount = match.players.filter(player => player.ready).length;
   return <div className="screen-stack"><PageTitle index="03 / SESSIONE LOCALE" title="La squadra si prepara." desc="I partecipanti sono dati fittizi che esistono solo in questa sessione." action={<span className="demo-pill"><i /> SOLO DEMO</span>} />
-    <div className="lobby-layout"><div className="lobby-roster panel"><div className="panel-topline"><span>GIOCATORI DEMO <b>{match.players.length.toString().padStart(2, '0')}</b> / {match.config.maxPlayers}</span><button className="text-link" onClick={addPlayer} disabled={match.players.length >= match.config.maxPlayers}>＋ AGGIUNGI GIOCATORE FITTIZIO</button></div><div className="roster-list">{match.players.map((player, index) => <div key={player.id} className="roster-player"><span className="avatar" style={{ '--avatar-color': player.color } as CSSProperties}>{player.initials}</span><span className="roster-name"><b>{player.name.toUpperCase()}</b><small>{player.isLocal ? 'HOST DEMO · TU' : player.id.startsWith('guest') ? 'PARTECIPANTE FITTIZIO' : `GIOCATORE 0${index}`}</small></span><span className={`roster-team roster-team--${player.team}`}>{match.config.teams ? (player.team === 'red' ? 'ROSSA' : 'VERDE') : 'SOLO'}</span><button className={`ready-badge ${player.ready ? 'ready-badge--ready' : ''}`} onClick={() => toggleReady(player.id)}>{player.ready ? '● PRONTO' : '◌ NON PRONTO'}</button></div>)}</div><div className="roster-footer"><span>{readyCount} / {match.players.length} PRONTI</span><div className="ready-segments">{match.players.map(player => <i key={player.id} className={player.ready ? 'ready' : ''} />)}</div></div></div>
+    <div className="lobby-layout"><div className="lobby-roster panel"><div className="panel-topline"><span>GIOCATORI DEMO <b>{match.players.length.toString().padStart(2, '0')}</b> / {match.config.maxPlayers}</span><button className="text-link" onClick={addPlayer} disabled={match.players.length >= match.config.maxPlayers}>＋ AGGIUNGI GIOCATORE FITTIZIO</button></div><div className="roster-list">{match.players.map((player, index) => <div key={player.id} className="roster-player"><span className="avatar" style={{ '--avatar-color': player.color } as CSSProperties}>{player.initials}</span><span className="roster-name"><b>{player.name.toUpperCase()}</b><small>{player.isLocal ? 'HOST DEMO · TU' : player.id.startsWith('guest') ? 'PARTECIPANTE FITTIZIO' : `GIOCATORE 0${index}`}</small></span><span className={`roster-team roster-team--${player.team}`}>{match.config.teams ? (player.team === 'red' ? 'ROSSA' : 'VERDE') : 'SOLO'}</span><button className={`ready-badge ${player.ready ? 'ready-badge--ready' : ''}`} onClick={() => toggleReady(player.id)}>{player.ready ? '● PRONTO' : '◌ NON PRONTO'}</button></div>)}</div><div className="roster-footer"><span>{readyCount} / {match.players.length} PRONTI</span><div className="ready-segments">{match.players.map(player => <i key={player.id} className={player.ready ? 'ready' : ''} />)}</div></div><MatchAreaMap match={match} stage="LOBBY" /></div>
       <aside className="lobby-side"><div className="room-code panel"><div className="eyebrow"><span>INVITE CODE</span><i /></div><div className="code-value">{match.code.split('').map((char, index) => <b key={index}>{char}</b>)}</div><button className="copy-code" onClick={copyCode}>▣ COPIA CODICE</button><div className="room-private"><span className="status-dot" /> CODICE DI QUESTA DEMO</div></div><div className="lobby-rules panel"><div className="eyebrow">MATCH BRIEF</div><div className="rule-line"><span>MODE</span><b>{match.config.mode}</b></div><div className="rule-line"><span>FIELD RADIUS</span><b>{match.config.radius.toLocaleString('it-IT')} M</b></div><div className="rule-line"><span>TIME LIMIT</span><b>{match.config.duration} MIN</b></div><div className="rule-line"><span>SIMULATION</span><b className="text-green">ACTIVE</b></div></div><button className="button button--primary lobby-start" onClick={startGame}><span>START SIMULATION</span><b>↗</b></button><p className="lobby-legal">Nessun altro giocatore è connesso. I partecipanti sono simulati.</p></aside></div>
   </div>;
 }
@@ -248,7 +263,7 @@ function Game({ match, roleView, setRoleView, remaining, capturedCount, captureP
   const canCapture = roleView === 'hunter';
   const openTargets = match.players.filter(player => !player.isLocal && !player.captured);
   return <div className="game-screen"><div className="game-topline"><div><div className="eyebrow"><span>LIVE / DEMO</span><i /> SIMULATED SESSION</div><h1>CLASSIC HIDE & SEEK</h1></div><div className="game-role-switch"><span>VISTA DEMO</span><button className={roleView === 'hunter' ? 'active' : ''} onClick={() => setRoleView('hunter')}>HUNTER</button><button className={roleView === 'runner' ? 'active' : ''} onClick={() => setRoleView('runner')}>RUNNER</button></div></div>
-    <div className="game-grid"><div className="game-map-wrap"><div className="game-map-head"><div><span className="status-dot status-dot--yellow" /> FIELD 07 <b>·</b> {match.config.radius} M RADIUS</div><span className="map-live-label">SIMULATED CITY GRID <i>⌖</i></span></div><CityMap players={match.players} role={roleView} compact={false} /><div className="game-map-bottom"><span><i className="legend-dot legend-dot--you" /> YOUR POSITION / DEMO</span><span><i className="legend-dot legend-dot--hostile" /> {roleView === 'hunter' ? 'RUNNER VISIBLE IN DEMO' : 'HIDDEN MOVEMENT'}</span><span><i className="legend-dot legend-dot--safe" /> PLAY AREA</span></div></div>
+    <div className="game-grid"><div className="game-map-wrap"><MatchAreaMap match={match} stage="GAME" /></div>
       <aside className="game-panel"><div className="timer-panel"><span className="eyebrow">TIME REMAINING</span><div className="game-timer">{formatTime(match.secondsLeft)}</div><div className="timer-track"><i style={{ width: `${Math.max(2, (match.secondsLeft / (match.config.duration * 60)) * 100)}%` }} /></div><div className="timer-foot"><span>SESSION 01</span><span>{match.config.duration}:00</span></div></div>
         <div className={`role-card role-card--${roleView}`}><span className="eyebrow">YOUR ROLE / DEMO</span><h2>{roleView === 'hunter' ? 'HUNTER' : 'RUNNER'}</h2><p>{roleView === 'hunter' ? 'Cerca i segnali. Tagga i runner simulati.' : 'Resta nell’ombra. Evita il contatto.'}</p><span className="role-mark">{roleView === 'hunter' ? '⌁' : '◉'}</span></div>
         <div className="objective-panel"><div className="eyebrow">OBJECTIVE</div><div className="objective-row"><span className="objective-icon">⌖</span><span><b>{roleView === 'hunter' ? 'TAG THE RUNNERS' : 'STAY UNSEEN'}</b><small>{capturedCount} TAGGED · {remaining.length - capturedCount} ACTIVE</small></span></div>{match.config.missions && <button className={`mission-chip ${match.missionComplete ? 'mission-chip--done' : ''}`} onClick={completeMission}><span>{match.missionComplete ? '✓' : '◇'}</span>{match.missionComplete ? 'RELAY SIGNAL / COMPLETE' : 'SIMULATED MISSION · ACTIVATE RELAY'}</button>}</div>
@@ -260,7 +275,7 @@ function Game({ match, roleView, setRoleView, remaining, capturedCount, captureP
 
 function Results({ result, match, rematch, go }: { result: { winner: string; elapsed: string } | null; match: DemoMatch | null; rematch: () => void; go: (screen: Screen) => void }) {
   const winner = result?.winner ?? 'RUNNERS';
-  return <div className="results-screen"><div className="results-orbit"><i /><i /><i /><span>✦</span></div><div className="eyebrow"><span>SIMULATION COMPLETE</span><i /> DEBRIEF 01</div><h1>{winner === 'HUNTERS' ? 'THE HUNT' : 'STAYED HIDDEN'}<br /><em>{winner === 'HUNTERS' ? 'IS OVER.' : 'THIS TIME.'}</em></h1><p className="results-sub">{winner} WIN THIS DEMO ROUND</p><div className="results-stats"><div><span>TIME IN FIELD</span><b>{result?.elapsed ?? '08:32'}</b></div><div><span>PLAYERS TAGGED</span><b>{match?.players.filter(p => p.captured).length ?? 2}<small> / {match?.players.length ?? 6}</small></b></div><div><span>FIELD RADIUS</span><b>{match?.config.radius ?? 840}<small> M</small></b></div><div><span>SESSION TYPE</span><b>LOCAL<small> DEMO</small></b></div></div><div className="result-actions"><button className="button button--primary" onClick={rematch}><span>RIVINCITA</span><b>↗</b></button><button className="button button--ghost" onClick={() => go('home')}><span>TORNA ALLA HOME</span><b>⌂</b></button></div><p className="result-disclaimer">RISULTATO DIMOSTRATIVO · NESSUN MATCH REALE È STATO GIOCATO</p></div>;
+  return <div className="results-screen"><div className="results-orbit"><i /><i /><i /><span>✦</span></div><div className="eyebrow"><span>SIMULATION COMPLETE</span><i /> DEBRIEF 01</div><h1>{winner === 'HUNTERS' ? 'THE HUNT' : 'STAYED HIDDEN'}<br /><em>{winner === 'HUNTERS' ? 'IS OVER.' : 'THIS TIME.'}</em></h1><p className="results-sub">{winner} WIN THIS DEMO ROUND</p><div className="results-stats"><div><span>TIME IN FIELD</span><b>{result?.elapsed ?? '08:32'}</b></div><div><span>PLAYERS TAGGED</span><b>{match?.players.filter(p => p.captured).length ?? 2}<small> / {match?.players.length ?? 6}</small></b></div><div><span>FIELD RADIUS</span><b>{match?.config.radius ?? 840}<small> M</small></b></div><div><span>SESSION TYPE</span><b>LOCAL<small> DEMO</small></b></div></div>{match && <MatchAreaMap match={match} stage="RESULTS" />}<div className="result-actions"><button className="button button--primary" onClick={rematch}><span>RIVINCITA</span><b>↗</b></button><button className="button button--ghost" onClick={() => go('home')}><span>TORNA ALLA HOME</span><b>⌂</b></button></div><p className="result-disclaimer">RISULTATO DIMOSTRATIVO · NESSUN MATCH REALE È STATO GIOCATO</p></div>;
 }
 
 function Profile({ go }: { go: (screen: Screen) => void }) {

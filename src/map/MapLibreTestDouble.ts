@@ -14,9 +14,9 @@ export class TestMap {
   controls: unknown[] = [];
   removed = false;
   cameraMoves: unknown[] = [];
+  zoom = 2;
   constructor(public options: Record<string, unknown>) {
     TestMap.instances.push(this);
-    queueMicrotask(() => this.fire('load'));
   }
   addControl(control: unknown) { this.controls.push(control); return this; }
   on(event: string, listener: EventListener) {
@@ -30,6 +30,7 @@ export class TestMap {
     for (const listener of this.handlers.get(event) ?? []) listener({ target: this, ...detail });
   }
   flyTo(options: unknown) { this.cameraMoves.push(options); }
+  getZoom() { return this.zoom; }
   resize() {}
   remove() { this.removed = true; }
 }

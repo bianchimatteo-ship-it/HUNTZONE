@@ -31,7 +31,7 @@ The first product is a responsive website. A native Android client follows for r
 
 ## Project state
 
-The repository contains a React/TypeScript/Vite frontend prototype and an independent `packages/game-core` policy foundation. The Create screen now uses MapLibre GL JS and Stadia Maps (EU endpoint) for a real interactive map, with a foreground-only device-location picker that starts only after the explicit user action. Its selected centre and GPS sample stay in memory while Create is open and are not sent to a game backend or saved in the demo config. The local demo lobby, roster, roles, timer, captures and results remain simulated; only CLASSIC is playable in that demo. The core validates capture-policy shapes, evaluates server-held GPS evidence, gates temporary PIN attempts, validates random/manual role slots, invalidates affected READY states, and builds role visibility projections. The registry still marks every mode `proposal`; the package does not start or adjudicate matches, and these primitives are not connected to a service.
+The repository contains a React/TypeScript/Vite frontend prototype and an independent `packages/game-core` policy foundation. The Create, Lobby, Game and Results screens use MapLibre GL JS and Stadia Maps (EU endpoint). The optional foreground GPS watcher starts only after an explicit click, survives Create→Lobby→Game, and stops on STOP, leaving the flow or match completion. The selected centre/radius and current sample stay in React memory only; lobby and game display the real area map and the user's device marker/accuracy ring, never simulated participant positions. The local roster, roles, timer, captures and results remain simulated; only CLASSIC is playable in that demo. The core validates capture-policy shapes, evaluates server-held GPS evidence, gates temporary PIN attempts, validates random/manual role slots, invalidates affected READY states, and builds role visibility projections. The registry still marks every mode `proposal`; the package does not start or adjudicate matches, and these primitives are not connected to a service.
 
 There is no multiplayer backend, database, WebSocket service, active-match GPS integration, authentication service, or Android client yet. Stadia domain authentication is expected for `huntzone-review.pages.dev` per the owner; no API key is shipped. Do not describe the current site as a real game or beta. Product, rules, privacy, legal, operational and playtest decisions remain open and are listed in [BETA-SCOPE.md](docs/BETA-SCOPE.md). HUNTZONE is the working project name; domain, store listing and trademark availability must be checked before commercial publication.
 
@@ -45,9 +45,10 @@ npm run dev
 npm run test
 npm run typecheck
 npm run build
+npm run test:e2e
 ```
 
-The browser UI is a local demo only. `npm run build` targets `/` for local use and Cloudflare Pages. `npm run build:github-pages` targets `/HUNTZONE/` for the project site. See [the beta implementation plan](docs/BETA-IMPLEMENTATION-PLAN.md) for the staged backend, GPS, Android and six-mode work.
+The browser UI is a local demo only. The end-to-end test needs Google Chrome, WebGL2 and access to Stadia; it checks real worker/style/tile requests, browser Origin/Referer, rendering, touch/mouse interactions, responsive widths and error retry. It never requests GPS. `npm run build` targets `/` for local use and Cloudflare Pages. `npm run build:github-pages` targets `/HUNTZONE/` for the project site. See [the beta implementation plan](docs/BETA-IMPLEMENTATION-PLAN.md) for the staged backend, Android and six-mode work.
 
 ## Beta direction
 

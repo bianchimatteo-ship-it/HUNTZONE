@@ -84,15 +84,15 @@ Exact GPS remains in bounded volatile match-owner memory, with receipt timestamp
 ### Delivered web map and foreground GPS picker — 2026-11-03
 
 - The Create screen uses a MapLibre GL JS provider adapter with Stadia Alidade Smooth Dark over EU endpoints, visible attribution and a provider error/retry state.
-- Optional GPS starts only after **ATTIVA POSIZIONE**; the UI exposes accuracy, timestamp, age and stale/permission/error states, and clears the watch/sample on STOP or leaving Create.
-- The user may centre the viewport on the device, separately set that point as the area centre, or tap another point. Radius 100–3,000 m uses a geodesic polygon with antimeridian handling. The chosen centre is held in memory only and is not connected to local demo lobby state.
-- Provider calls use domain authentication in production and keyless local development on localhost; no API key is in the client. Cross-origin referrer policy is explicit and browser-generated headers are not overridden.
-- Automated tests use mocked geolocation. This is not evidence from a physical GPS device or a production Stadia-authorized request.
+- MapLibre 6's Vite worker is set once before app mount; root and `/HUNTZONE/` builds emit their own worker asset. Runtime diagnostics distinguish auth, style, worker, WebGL2, network, timeout, tile-degraded and fatal states; a tile error after initial render does not hide the map.
+- Optional GPS starts only after **ATTIVA POSIZIONE**. A root provider keeps the single foreground watch/sample through Create→Lobby→Game and clears it on STOP, match completion or abandoning the flow.
+- The chosen centre/radius are carried in the in-memory local match through Results; Lobby, Game and Results display the true map, area and device accuracy ring. No demo participants are presented as real locations.
+- Chrome E2E verified localhost worker/style/vector tiles, browser `Origin`/`Referer`, rendering, touch pinch, mouse selection/zoom, 401 retry recovery and nine responsive widths. No API key is used and no physical GPS permission/device test was run.
 
 ### Still required for beta
 
 - Integrate GPS consent and samples into an active authenticated match over HTTPS; the setup picker itself is not match consent and never sends GPS to a server.
-- Verify the Stadia domain allow-list and Origin/Referer request headers on the deployed site, complete browser/device field testing and privacy-notice review.
+- Re-run real browser checks on Cloudflare after the new build is deployed; the last live response had old asset hashes. Complete physical-device and privacy-notice review.
 - Keep background GPS in the later native Android foreground-service milestone. Do not show fictitious player markers in beta mode; browser suspension remains visibly degraded.
 
 ## Milestone 4 — Native Android

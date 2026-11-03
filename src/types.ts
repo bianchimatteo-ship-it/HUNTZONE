@@ -1,3 +1,5 @@
+import type { GeoCoordinate } from './location/geolocation';
+
 export type Screen = 'home' | 'modes' | 'create' | 'lobby' | 'game' | 'results' | 'profile';
 export type Role = 'hunter' | 'runner';
 export type Player = {
@@ -28,6 +30,8 @@ export type MatchConfig = {
 export type DemoMatch = {
   code: string;
   config: MatchConfig;
+  areaCenter: GeoCoordinate | null;
+  centerSource: 'map' | 'device' | null;
   players: Player[];
   secondsLeft: number;
   role: Role;

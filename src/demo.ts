@@ -34,11 +34,13 @@ export function makePlayers(maxPlayers: number): Player[] {
   ];
 }
 
-export function makeMatch(config: MatchConfig): DemoMatch {
+export function makeMatch(config: MatchConfig, areaCenter: DemoMatch['areaCenter'] = null, centerSource: DemoMatch['centerSource'] = null): DemoMatch {
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
   return {
     code,
     config,
+    areaCenter,
+    centerSource,
     players: makePlayers(config.maxPlayers),
     secondsLeft: config.duration * 60,
     role: 'runner',
