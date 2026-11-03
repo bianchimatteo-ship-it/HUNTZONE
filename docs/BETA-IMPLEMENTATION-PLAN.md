@@ -81,11 +81,19 @@ Exact GPS remains in bounded volatile match-owner memory, with receipt timestamp
 
 ## Milestone 3 — Web GPS and real map
 
-- Request `watchPosition()` only after in-context consent when joining an active location-dependent match over HTTPS.
-- Track accuracy, sequence and sample age; stop and clear on end/leave/withdrawal. Stale or uncertain samples suspend location-dependent actions.
-- Put rendering behind a MapLibre-compatible `MapProvider` adapter. Do not select a tile/geocoding provider until current coverage, attribution, privacy, license and cost are reviewed.
-- Do not show fictitious player markers in beta mode.
-- Browser suspension/background behavior remains visibly degraded; do not promise background continuity.
+### Delivered web map and foreground GPS picker — 2026-11-03
+
+- The Create screen uses a MapLibre GL JS provider adapter with Stadia Alidade Smooth Dark over EU endpoints, visible attribution and a provider error/retry state.
+- Optional GPS starts only after **ATTIVA POSIZIONE**; the UI exposes accuracy, timestamp, age and stale/permission/error states, and clears the watch/sample on STOP or leaving Create.
+- The user may centre the viewport on the device, separately set that point as the area centre, or tap another point. Radius 100–3,000 m uses a geodesic polygon with antimeridian handling. The chosen centre is held in memory only and is not connected to local demo lobby state.
+- Provider calls use domain authentication in production and keyless local development on localhost; no API key is in the client. Cross-origin referrer policy is explicit and browser-generated headers are not overridden.
+- Automated tests use mocked geolocation. This is not evidence from a physical GPS device or a production Stadia-authorized request.
+
+### Still required for beta
+
+- Integrate GPS consent and samples into an active authenticated match over HTTPS; the setup picker itself is not match consent and never sends GPS to a server.
+- Verify the Stadia domain allow-list and Origin/Referer request headers on the deployed site, complete browser/device field testing and privacy-notice review.
+- Keep background GPS in the later native Android foreground-service milestone. Do not show fictitious player markers in beta mode; browser suspension remains visibly degraded.
 
 ## Milestone 4 — Native Android
 

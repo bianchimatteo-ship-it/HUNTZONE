@@ -7,8 +7,8 @@ Sequence is dependency-based; dates and estimates follow discovery and team capa
 - The root React/TypeScript/Vite frontend is a local simulation, not a multiplayer client.
 - `packages/game-core` contains capture-policy validation/evidence checks, bounded PIN attempt transitions, random/manual role-slot assignment, READY invalidation and secret-role projections, alongside lobby commands. No mode can start because gameplay rules are not approved; these primitives are not connected to a server.
 - Milestone 0 and owner-approved capture/assignment scope are documented in [BETA-SCOPE.md](BETA-SCOPE.md), [GAME-DESIGN.md](GAME-DESIGN.md) and [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md).
-- The mobile-first interface has a redesigned local demo flow. The policy selectors are an unapplied local preview; no GPS, API, or real multiplayer is present.
-- Next gate: owner review of the prioritized rules and thresholds before completing the mode engine; in parallel, define backend identity/session and deployment ownership without creating paid resources.
+- The mobile-first Create screen now has a real MapLibre/Stadia EU map, geodesic area selection and an optional foreground-only GPS picker. GPS is requested only after a user action, remains in volatile screen memory, and is not connected to a match/backend. The policy selectors remain an unapplied local preview; lobby and gameplay remain simulated.
+- Next gate: owner review of the prioritized rules and thresholds before completing the mode engine; in parallel, define backend identity/session and deployment ownership without creating paid resources. Verify Stadia domain authentication on the deployed preview before considering the map provider operationally confirmed.
 
 ## Phase 0 — Validate the foundation
 
@@ -86,12 +86,12 @@ Do not build generic abstractions for hypothetical mechanics. Define the state/v
 
 ## Open decisions before implementation
 
-1. How should the two MVP centre-placement choices (host GPS and manual map pin) be ordered and explained in the quick-creation screen? Drawn boundaries remain later.
+1. Does the implemented centre-selection flow (GPS action, optional recenter, use-as-centre, manual map tap) behave clearly in usability tests? Drawn boundaries remain later.
 2. Which role configuration, hide time, match duration and capture distance should the first pilot use?
 3. Is capture automatic, host-confirmed or player-confirmed for MVP, and how is a dispute resolved?
 4. Are players adults-only for the initial launch? What is the age and guardian policy?
 5. Which identity provider, if any, is used when a guest upgrades?
-6. Which hosting region, map/tile provider and monthly spend ceiling are acceptable?
+6. Stadia Maps is selected for the current web preview with its EU endpoint. Which provider/terms, hosting region and monthly spend ceiling are acceptable for beta/commercial operations?
 7. What match-result and audit-event retention periods are needed?
 8. What moderation staffing and response times exist before public rooms or custom-mode publishing?
 9. What operator-owned maximum recovery window should pause before the match is cancelled? The default recovery behavior is restore committed virtual state, discard exact GPS, require fresh samples, then resume or cancel if validation fails.

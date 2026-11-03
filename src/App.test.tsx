@@ -1,12 +1,23 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+
+vi.mock('maplibre-gl', async () => {
+  const mock = await import('./map/MapLibreTestDouble');
+  return { Map: mock.TestMap, NavigationControl: mock.NavigationControl };
+});
+
+let originalGeolocation: PropertyDescriptor | undefined;
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
   window.location.hash = '';
+  if (originalGeolocation) Object.defineProperty(navigator, 'geolocation', originalGeolocation);
+  else delete (navigator as unknown as { geolocation?: Geolocation }).geolocation;
+  originalGeolocation = undefined;
 });
 
 beforeEach(() => {
@@ -29,6 +40,37 @@ describe('HUNTZONE local demo flow', () => {
     expect(screen.getByText(/Non influenzano la simulazione/i)).toBeTruthy();
     expect(screen.getByText(/soglie numeriche sono ancora da approvare/i)).toBeTruthy();
     expect(localStorage.getItem('huntzone.demo.config')).toContain('"captureMethod":"pin"');
+  });
+
+  it('requests GPS only after the explicit action and clears the watch when leaving creation', async () => {
+    let success: PositionCallback | undefined;
+    const geolocation = {
+      watchPosition: vi.fn((onSuccess: PositionCallback) => { success = onSuccess; return 9; }),
+      clearWatch: vi.fn(),
+    };
+    originalGeolocation = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: geolocation });
+    const user = userEvent.setup();
+    const view = render(<StrictMode><App /></StrictMode>);
+    await user.click(screen.getByRole('button', { name: /CREA PARTITA/i }));
+    expect(geolocation.watchPosition).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Stadia Maps' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: /ATTIVA POSIZIONE/i }));
+    expect(geolocation.watchPosition).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), {
+      enableHighAccuracy: true, maximumAge: 0, timeout: 15_000,
+    });
+    success?.({
+      coords: { latitude: 45.4642, longitude: 9.19, accuracy: 18 } as GeolocationCoordinates,
+      timestamp: Date.now(),
+    } as GeolocationPosition);
+    expect(await screen.findByText(/precisione dichiarata/i)).toBeTruthy();
+    expect(localStorage.getItem('huntzone.demo.config') ?? '').not.toContain('45.4642');
+    expect(location.hash).not.toContain('45.4642');
+
+    await user.click(screen.getByRole('button', { name: 'HUNTZONE home' }));
+    expect(geolocation.clearWatch).toHaveBeenCalledWith(9);
+    view.unmount();
   });
 
   it('creates a configured lobby, simulates a capture, ends the match and allows a rematch', async () => {

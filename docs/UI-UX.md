@@ -58,6 +58,12 @@ Every network- or location-dependent screen needs loading, empty, permission den
 
 Support keyboard navigation and screen readers on web, scalable text, non-color status labels, visible focus, reduced motion and high contrast. Mobile controls should work one-handed while stopped; do not require players to read or tap while walking. Include a short reminder to stop in a safe place before interacting with the map. Avoid flashing effects and audio cues that could be mistaken for public warnings.
 
+## Real map/GPS picker — 2026-11-03
+
+The Create screen now has a real Stadia Maps map with a neutral world view, permanent provider/data/renderer attribution, pan/zoom controls, explicit retry state, a touch-selectable play-area centre and geodesic radius overlay. Device position and play-area centre are distinct: the user can activate GPS, centre the viewport, then separately use that point as the area centre, or choose a different map point without granting location. The numeric radius and slider remain synchronized for every integer from 100 to 3,000 metres.
+
+GPS begins only after the user presses **ATTIVA POSIZIONE** and is foreground-only. Before that action, explain that the optional device sample stays in memory and that map tile requests reveal the area in view to Stadia Maps if the view is centred on GPS. Show reported accuracy, sample time and age; keep precise coordinates in collapsed technical diagnostics. Provide direct STOP and clear degraded/denied states. Do not show other players or present the Create screen as a live match. Current demo lobby/game screens remain simulations.
+
 ## Research questions
 
 Test whether a new player understands role visibility, capture uncertainty, location sharing, boundary size and permission consequences. Compare map-first and objective-first status layouts. Validate controls outdoors in sunlight with intermittent connectivity and with screen readers. Do not settle visual brand assets solely from this text specification.
