@@ -1,6 +1,6 @@
 # HUNTZONE — Beta scope and pending rule decisions
 
-**Status: design proposal for owner review.** The confirmed product decision is that all six modes belong in the beta. That does not make the rule details below approved. The existing browser application is still a local UI simulation; no mode in this file is live or server-authoritative.
+**Status: evolving implementation scope.** The owner requires all six human-player modes and has requested a complete first rule baseline. See [MODE-RULES.md](MODE-RULES.md). Those written rules are implementation targets; they are not field-validated and no mode is live or server-authoritative. Old proposal rows below remain historical input where their choices have not been replaced by the new baseline.
 
 ## Beta boundary
 

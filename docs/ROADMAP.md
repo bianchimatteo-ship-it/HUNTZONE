@@ -2,13 +2,13 @@
 
 Sequence is dependency-based; dates and estimates follow discovery and team capacity. The original phased mode rollout below has been superseded by the owner's confirmed beta target: all six modes must be playable before the beta gate. Earlier sequencing remains historical rationale for dependencies, not permission to ship a Classic-only beta.
 
-## Current status — 2026-11-03
+## Current status — 2026-11-07
 
-- The root React/TypeScript/Vite frontend is a local simulation, not a multiplayer client.
-- `packages/game-core` contains capture-policy validation/evidence checks, bounded PIN attempt transitions, random/manual role-slot assignment, READY invalidation and secret-role projections, alongside lobby commands. No mode can start because gameplay rules are not approved; these primitives are not connected to a server.
-- Milestone 0 and owner-approved capture/assignment scope are documented in [BETA-SCOPE.md](BETA-SCOPE.md), [GAME-DESIGN.md](GAME-DESIGN.md) and [BETA-IMPLEMENTATION-PLAN.md](BETA-IMPLEMENTATION-PLAN.md).
-- The mobile-first Create screen now has a real MapLibre/Stadia EU map, geodesic area selection and an optional foreground-only GPS picker. GPS is requested only after a user action, remains in volatile screen memory, and is not connected to a match/backend. The policy selectors remain an unapplied local preview; lobby and gameplay remain simulated.
-- Next gate: owner review of the prioritized rules and thresholds before completing the mode engine; in parallel, define backend identity/session and deployment ownership without creating paid resources. Verify Stadia domain authentication on the deployed preview before considering the map provider operationally confirmed.
+- The published client no longer mounts the local demo. It uses a real API for guest sessions, invite-code lobby creation/join, READY and WebSocket presence when configured. When the API/database is absent it reports unavailable and has no synthetic roster.
+- `apps/api` contains the first Fastify/PostgreSQL/PostGIS lobby service slice. Database migrations and HTTP-injection fail-closed tests exist, but this environment has no PostgreSQL/PostGIS or Docker, so real transactions and two-client synchronization have not been verified here.
+- [MODE-RULES.md](MODE-RULES.md) is the requested implementation rules baseline for all six human modes. All six remain in development until the game engine, GPS policy and mode conformance tests are complete.
+- Active-match GPS consent, volatile sample transport, server capture engine, timer/start/result lifecycle, Android foreground service and public backend deployment remain unfinished. No paid resource has been provisioned.
+- Next gate: run migrations against a local PostGIS database, execute the opt-in two-browser lobby test, then continue the server-authoritative game lifecycle. Do not advertise the site as playable until the deployed service and real-device field gates pass.
 
 ## Phase 0 — Validate the foundation
 

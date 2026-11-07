@@ -2,6 +2,8 @@
 
 ## Match model
 
+The first complete implementation target for all six human-player loops is [MODE-RULES.md](MODE-RULES.md). The table below is the earlier design catalogue; use the newer rulesheet for role counts and outcomes. A rulesheet or pure engine test does not make a mode playable until the authoritative service, privacy projections and field gates pass.
+
 A match has a host, a versioned mode configuration, a defined area, a roster, one authoritative server state and a lifecycle: `LOBBY → COUNTDOWN → ACTIVE → RESOLVING → COMPLETED` (or `CANCELLED`). Only the server changes lifecycle and outcome. Players submit actions and location observations; clients render the server's authorized view.
 
 Target roster is 3–30. A creator chooses an arbitrary whole-metre radius from 100 through 3,000 inclusive. The default value and how the area is placed (host-centred, selected point or drawn shape) remain prototype decisions. Safe-area validation and the ability to exclude unsuitable ground take priority over geometric precision.

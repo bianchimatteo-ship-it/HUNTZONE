@@ -31,6 +31,8 @@ jobs:
         run: npm run test
       - name: Typecheck frontend and game core
         run: npm run typecheck
+      - name: Typecheck multiplayer API
+        run: npm run api:typecheck
       - name: Build Cloudflare Pages output
         run: npm run build
       - name: Verify GitHub Pages base-path compatibility

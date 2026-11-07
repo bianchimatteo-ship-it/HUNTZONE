@@ -1,5 +1,12 @@
 # HUNTZONE — Security and privacy
 
+## Multiplayer implementation slice — 2026-11-07
+
+- Guest tokens are generated from 256 bits of randomness, returned once, and stored as SHA-256 verifiers. Session tokens are sent only as HTTPS Bearer credentials or in the first authenticated WebSocket frame; the WebSocket Origin is checked against `CORS_ORIGINS`.
+- Invite joins and READY changes use bounded JSON schemas, IP rate limits, row-locked database transactions and unique command keys. Snapshots require current participant membership. API logs redact authorization headers and never log request bodies.
+- No player GPS endpoint or durable precise-location table exists yet. Do not connect location collection until active-match consent, volatile TTL storage, freshness/accuracy checks, and deletion-on-stop are implemented and tested.
+- These are code-level controls only. No public API, PostgreSQL instance, TLS endpoint, penetration test or field test has been configured in this change.
+
 ## Threat model
 
 Protect players from location exposure, account/session takeover, unauthorized match access, manipulated roles/scores/captures, abusive public content, mode-rule resource exhaustion and accidental tracking beyond a match. Assume web/mobile clients, network timing and GPS samples can be manipulated. A user may also share screenshots or invite links outside the intended group.

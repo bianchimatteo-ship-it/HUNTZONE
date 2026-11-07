@@ -3,7 +3,7 @@
 ## Recommended starting stack
 
 - **Web:** TypeScript with React and a server-rendered/meta-framework chosen when the first UI slice is approved. Keep the game client as a thin renderer and intent sender.
-- **Backend:** TypeScript on a supported Node.js LTS runtime, with an HTTP API and WebSocket gateway. Keep framework choice open until a short implementation spike compares a minimal Fastify-based service with NestJS conventions.
+- **Backend:** TypeScript on a supported Node.js LTS runtime, with a Fastify HTTP API and authenticated WebSocket gateway. Fastify is now the first implementation framework; service/provider sizing remains open.
 - **Game core:** a framework-independent TypeScript package containing typed match state, commands, reducers, validators and versioned rule IR. No browser APIs, database calls or framework imports in the core.
 - **Persistence:** PostgreSQL; add PostGIS for spatial boundaries, safe zones and indexed spatial queries. Store match configuration and durable outcomes, not a default raw location trail.
 - **Realtime:** WebSockets for authenticated commands and authorized state updates. Use a connection/session layer that can reconnect and obtain a fresh snapshot.

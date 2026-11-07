@@ -10,6 +10,12 @@ Do not invent throughput, latency, battery or accuracy targets before collecting
 
 ## Test layers
 
+### Current human multiplayer foundation — 2026-11-07
+
+- `npm run test` covers the existing pure game-core policies, the UI's unavailable/no-roster behavior, and API responses when PostgreSQL is absent. It does not exercise database transactions or a real multiplayer session.
+- `npm run api:typecheck` typechecks the Fastify service. `npm run test:e2e` uses Chrome to verify offline fail-closed UI and responsive widths. It can run a two-client invite/READY scenario only when explicitly pointed at a locally configured PostgreSQL-backed API using `HUNTZONE_E2E_ALLOW_ONLINE=1`.
+- No PostgreSQL/PostGIS, multi-client browser integration, physical GPS, Android, public backend, or real-person field test has passed yet.
+
 1. **Game-core unit/property tests:** state transitions, role authorization, rules, timers and invariant preservation with deterministic RNG.
 2. **Persistence/recovery integration tests:** real transactional database behavior, checkpoint restore, event replay, duplicate commands and crash boundaries.
 3. **API/realtime contract tests:** auth, versioning, idempotency, reconnect snapshots/deltas and per-player privacy projections.

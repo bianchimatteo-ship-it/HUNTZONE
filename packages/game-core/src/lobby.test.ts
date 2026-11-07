@@ -23,9 +23,9 @@ function lobby(playerCap = 3) {
 }
 
 describe('beta mode registry and config validation', () => {
-  it('registers the six requested modes as explicitly unapproved proposals', () => {
+  it('registers all six modes as in development and not playable', () => {
     expect(MODE_IDS).toHaveLength(6);
-    expect(MODE_IDS.every(id => MODE_PRESETS[id].rulesStatus === 'proposal')).toBe(true);
+    expect(MODE_IDS.every(id => MODE_PRESETS[id].rulesStatus === 'in-development')).toBe(true);
   });
 
   it.each(MODE_IDS)('validates proposed player bounds for %s', modeId => {

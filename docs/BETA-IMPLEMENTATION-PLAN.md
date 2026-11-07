@@ -12,13 +12,19 @@
 
 ## Milestone 1 — Framework-independent game core (in progress)
 
+### Human-mode rules baseline — 2026-11-07
+
+- [MODE-RULES.md](MODE-RULES.md) specifies roles, start conditions, capture eligibility, timers, disconnect/withdrawal, terminal outcomes and privacy behavior for all six human-player modes.
+- Initial numerical defaults are implementation values for controlled trials, not field-validated balance or proof that any mode is playable. No mode may start until its authoritative implementation and conformance suite pass.
+
 ### Delivered first slice
 
 - `packages/game-core` has no React, browser, database, network, or provider imports.
-- Versioned mode registry for all six requested IDs. Each is marked `proposal`, not executable.
+- Versioned mode registry for all six requested IDs. Each is marked `in-development`, not playable.
 - Strict common match-configuration validation with explicit player, radius, duration, and schema checks.
 - Pure lobby creation/join/ready transitions with monotone revision, expected-revision checks, and command-ID deduplication.
 - Unit tests exercise every registry entry and lobby boundary/error behavior.
+- First isolated mode engine slice assigns all six role layouts and tests authorized captures/conversion, Tasks & Deception actions, withdrawal, terminal conditions, and timer resolution. It is not wired into the HTTP API, and no mode can start online.
 
 ### Policy extension delivered in this milestone
 
@@ -30,13 +36,20 @@
 
 ### Still required
 
-- Owner approval of mode-specific rules and numeric bounds.
+- Safe field validation of the mode rules and numeric values in [MODE-RULES.md](MODE-RULES.md).
 - Server-seeded role assignment, immutable mode-version pinning, start/countdown/active/pause/resolve transitions, timers, terminal evaluation, capture/conversion/elimination, and authorized projections.
 - Tests for every approved mode's normal, edge, duplicate, timeout, disconnect, and simultaneous-event behavior.
 - Backend enforcement, CSPRNG binding, PIN hashing/rate limiting, durable attempts and authenticated per-player projections.
 - Durable idempotency and checkpoint/replay belong to the backend integration, not in a client store.
 
 ## Milestone 2 — Backend protocol and persistence
+
+### Real lobby service slice — 2026-11-07
+
+- Added `apps/api` on Fastify with PostgreSQL/PostGIS schema migrations, hash-only guest session credentials, private invitation-code lobby create/join, session-authorized snapshots and READY commands.
+- Match revisions, participant changes and idempotent READY commands commit transactionally before acknowledgement; lobby lifecycle events omit coordinates. WebSocket streams authenticate in their first message, enforce configured browser origins, publish per-member snapshots and maintain real connection presence. A disconnect changes presence only; it never counts as a capture.
+- The web entry now uses the real API client. It creates and joins only server-backed lobbies; actual session names are shown after the server accepts the operation. If API/database health is unavailable, the page disables lobby actions and creates no local match.
+- The start/gameplay capability is explicitly false. There is no role assignment, match countdown, active game engine, capture endpoint, active GPS transport, result path or deployed database yet. PostgreSQL/PostGIS and a multi-client API integration run were not available in this environment.
 
 ### Proposed transport contract
 
@@ -73,9 +86,9 @@ Exact GPS remains in bounded volatile match-owner memory, with receipt timestamp
 
 ### Backend build tasks
 
-1. Create `apps/api` with Fastify, auth/session boundary, HTTP schema validation and WebSocket gateway.
-2. Integrate the pure core as a dependency; API layer owns persistence/transactions and authorized projections.
-3. Add Postgres migrations, transaction/outbox or post-commit publish, command uniqueness, checkpoint and recovery tests.
+1. Extend the lobby service with host/admin actions, join idempotency, reconnect expiry and transactional host transfer.
+2. Integrate mode engine, server CSPRNG assignment, active-match GPS consent and volatile sample owner.
+3. Add start/capture/mission/result transactions, checkpoint/recovery, location TTL clearing and multi-client Postgres integration tests.
 4. Add rate limits, join-code throttling, input size caps, security headers, secret management, metrics, retention/deletion, backups, and incident procedures.
 5. Run no paid deployment until owner approves provider, region, spend ceiling, and operational owner.
 

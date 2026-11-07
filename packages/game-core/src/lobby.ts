@@ -24,7 +24,7 @@ export function validateMatchConfig(input: unknown): GameCoreResult<MatchConfig>
   if (candidate.schemaVersion !== 1) invalid.push('schemaVersion');
   if (typeof candidate.modeId !== 'string' || !MODE_IDS.includes(candidate.modeId as ModeId)) invalid.push('modeId');
   if (!Number.isInteger(candidate.radiusMeters) || Number(candidate.radiusMeters) < 100 || Number(candidate.radiusMeters) > 3000) invalid.push('radiusMeters');
-  if (!Number.isInteger(candidate.durationSeconds) || Number(candidate.durationSeconds) < 60 || Number(candidate.durationSeconds) > 7200) invalid.push('durationSeconds');
+  if (!Number.isInteger(candidate.durationSeconds) || Number(candidate.durationSeconds) < 600 || Number(candidate.durationSeconds) > 7200) invalid.push('durationSeconds');
 
   const mode = typeof candidate.modeId === 'string' && MODE_IDS.includes(candidate.modeId as ModeId)
     ? MODE_PRESETS[candidate.modeId as ModeId]
