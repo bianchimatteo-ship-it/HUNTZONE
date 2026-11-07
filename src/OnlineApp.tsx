@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MODE_IDS, MODE_PRESETS, type ModeId } from '../packages/game-core/src/modes';
 
-type Session = { token: string; playerId: string; displayName: string };
+type Session = { playerId: string; displayName: string };
 type Player = { id: string; displayName: string; ready: boolean; connected: boolean };
 type Snapshot = {
   matchId: string; inviteCode: string; inviteUrl?: string; hostPlayerId: string; viewerPlayerId: string;
@@ -12,10 +12,11 @@ type ServiceState = 'checking' | 'unconfigured' | 'unavailable' | 'ready';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const modeOptions: ModeId[] = [...MODE_IDS];
 
-async function request<T>(path: string, token?: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: body ? 'POST' : 'GET',
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    credentials: 'include',
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
@@ -64,6 +65,19 @@ export default function OnlineApp() {
     return () => window.clearInterval(interval);
   }, [checkService]);
 
+  useEffect(() => {
+    if (!API_BASE) return;
+    let disposed = false;
+    void request<{ session: Session; match: Snapshot | null }>('/v1/guest-sessions/current')
+      .then(restored => {
+        if (disposed) return;
+        setSession(restored.session);
+        setSnapshot(restored.match);
+      })
+      .catch(() => { /* An absent/expired session returns the user to the entry screen. */ });
+    return () => { disposed = true; };
+  }, []);
+
   useEffect(() => { currentRevision.current = snapshot?.revision ?? 0; }, [snapshot?.revision]);
 
   useEffect(() => {
@@ -77,7 +91,7 @@ export default function OnlineApp() {
       socket = new WebSocket(apiSocketUrl(snapshot.matchId));
       socket.addEventListener('open', () => {
         retry = 0;
-        socket?.send(JSON.stringify({ type: 'session.authenticate', token: session.token }));
+        socket?.send(JSON.stringify({ type: 'session.authenticate' }));
       });
       socket.addEventListener('message', event => {
         try {
@@ -94,19 +108,19 @@ export default function OnlineApp() {
     };
     connect();
     return () => { disposed = true; window.clearTimeout(retryTimer); socket?.close(); };
-  }, [session?.token, snapshot?.matchId]);
+  }, [session?.playerId, snapshot?.matchId]);
 
   async function createGuest() {
     const cleanName = displayName.trim();
     if (cleanName.length < 2) throw new Error('Inserisci un nome da 2 a 32 caratteri.');
-    return request<Session>('/v1/guest-sessions', undefined, { displayName: cleanName });
+    return request<Session>('/v1/guest-sessions', { displayName: cleanName });
   }
 
   async function createLobby(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const guest = await createGuest();
-      const lobby = await request<Snapshot>('/v1/lobbies', guest.token, { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60 });
+      const lobby = await request<Snapshot>('/v1/lobbies', { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60 });
       setSession(guest); setSnapshot(lobby);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Creazione lobby non riuscita.'); }
     finally { setBusy(false); }
@@ -116,7 +130,7 @@ export default function OnlineApp() {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const guest = await createGuest();
-      const lobby = await request<Snapshot>(`/v1/lobbies/${encodeURIComponent(inviteCode.trim().toUpperCase())}/join`, guest.token, {});
+      const lobby = await request<Snapshot>(`/v1/lobbies/${encodeURIComponent(inviteCode.trim().toUpperCase())}/join`, {});
       setSession(guest); setSnapshot(lobby);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Accesso lobby non riuscito.'); }
     finally { setBusy(false); }
@@ -126,7 +140,7 @@ export default function OnlineApp() {
     if (!session || !snapshot) return;
     setBusy(true); setError('');
     try {
-      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/ready`, session.token, {
+      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/ready`, {
         commandId: crypto.randomUUID(), expectedRevision: currentRevision.current, ready,
       });
       setSnapshot(result.snapshot);

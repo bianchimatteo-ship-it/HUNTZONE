@@ -17,6 +17,23 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:16-3.6
+        env:
+          POSTGRES_DB: huntzone_test
+          POSTGRES_USER: huntzone
+          POSTGRES_PASSWORD: huntzone_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U huntzone -d huntzone_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://huntzone:huntzone_test@localhost:5432/huntzone_test
+      NODE_ENV: test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,10 +46,14 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm run test
+      - name: Run PostgreSQL/PostGIS integration tests
+        run: npm run api:test:integration
       - name: Typecheck frontend and game core
         run: npm run typecheck
       - name: Typecheck multiplayer API
         run: npm run api:typecheck
+      - name: Build multiplayer API
+        run: npm run api:build
       - name: Build Cloudflare Pages output
         run: npm run build
       - name: Verify GitHub Pages base-path compatibility

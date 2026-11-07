@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: huntzone
+      POSTGRES_USER: huntzone
+      POSTGRES_PASSWORD: huntzone_local_only
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - huntzone-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huntzone -d huntzone"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  huntzone-postgres:

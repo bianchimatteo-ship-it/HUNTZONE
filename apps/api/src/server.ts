@@ -5,7 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import { MODE_IDS, applyLobbyCommand, createLobby, type MatchState } from '../../../packages/game-core/src/index.js';
-import { authenticate, hashSessionToken, newSessionToken, type Principal } from './auth.js';
+import { authenticate, hashSessionToken, newSessionToken, sessionTokenFromRequest, type Principal } from './auth.js';
 import { pool, withTransaction } from './db.js';
 
 const PORT = Number(process.env.API_PORT || 8787);
@@ -15,6 +15,7 @@ const inviteAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const app = Fastify({
   logger: process.env.NODE_ENV === 'test' ? false : { redact: ['req.headers.authorization', 'req.headers.cookie'] },
   bodyLimit: 16 * 1024,
+  trustProxy: process.env.TRUST_PROXY === 'true',
 });
 
 type ParticipantRow = { id: string; display_name: string; ready: boolean; connected: boolean; host: boolean };
@@ -43,6 +44,13 @@ async function authenticateRawToken(token: unknown): Promise<Principal | null> {
       WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at > now()`, [hashSessionToken(token)],
   );
   return result.rows[0] ? { playerId: result.rows[0].player_id, displayName: result.rows[0].display_name } : null;
+}
+
+function setSessionCookie(reply: import('fastify').FastifyReply, token: string) {
+  const secure = process.env.NODE_ENV === 'production';
+  const name = secure ? '__Host-huntzone_session' : 'huntzone_session';
+  const attributes = [`${name}=${token}`, 'Path=/', 'HttpOnly', 'Max-Age=2592000', secure ? 'Secure' : '', secure ? 'SameSite=None' : 'SameSite=Lax'].filter(Boolean);
+  reply.header('Set-Cookie', attributes.join('; '));
 }
 
 async function loadLobbyState(client: import('pg').PoolClient, matchId: string): Promise<MatchState | null> {
@@ -147,7 +155,14 @@ async function requirePrincipal(request: import('fastify').FastifyRequest, reply
 }
 
 const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(origin => origin.trim()).filter(Boolean);
-await app.register(cors, { origin: allowedOrigins, methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Authorization', 'Content-Type'] });
+await app.register(cors, { origin: allowedOrigins, credentials: true, methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Authorization', 'Content-Type'] });
+app.addHook('onRequest', async (request, reply) => {
+  if (request.method !== 'POST' || !sessionTokenFromRequest(request)) return;
+  const origin = request.headers.origin;
+  if (!origin || !allowedOrigins.includes(origin)) {
+    await reply.code(403).send({ error: { code: 'ORIGIN_REJECTED', message: 'Origine non autorizzata per questa sessione.' } });
+  }
+});
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 await app.register(websocket, { options: { maxPayload: 8192 } });
 
@@ -171,8 +186,23 @@ app.post<{ Body: { displayName: string } }>('/v1/guest-sessions', {
       await client.query('INSERT INTO guest_sessions(token_hash,player_id,expires_at) VALUES($1,$2,$3)', [hashSessionToken(token), player.rows[0]!.id, expiresAt]);
       return player.rows[0]!.id;
     });
-    return reply.code(201).send({ token, playerId: created, displayName, expiresAt: expiresAt.toISOString() });
+    setSessionCookie(reply, token);
+    return reply.code(201).send({ playerId: created, displayName, expiresAt: expiresAt.toISOString() });
   } catch { return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Impossibile creare una sessione.' } }); }
+});
+
+app.get('/v1/guest-sessions/current', async (request, reply) => {
+  const principal = await requirePrincipal(request, reply);
+  if (!principal) return;
+  if (!pool) return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Servizio multiplayer non disponibile.' } });
+  try {
+    const active = await pool.query<{ id: string }>(
+      `SELECT m.id FROM matches m JOIN participants p ON p.match_id=m.id
+        WHERE p.player_id=$1 AND m.phase='lobby' ORDER BY p.joined_at DESC LIMIT 1`, [principal.playerId],
+    );
+    const match = active.rows[0] ? await publicSnapshot(active.rows[0].id, principal.playerId) : null;
+    return reply.send({ session: principal, match });
+  } catch { return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Impossibile recuperare la sessione.' } }); }
 });
 
 app.post<{ Body: { modeId: string; playerCap: number; radiusMeters: number; durationSeconds: number; displayName?: string } }>('/v1/lobbies', {
@@ -283,7 +313,7 @@ app.get<{ Params: { matchId: string } }>('/v1/matches/:matchId/stream', { websoc
   let matchId = request.params.matchId;
   let connection: ClientSocket | null = null;
   const origin = request.headers.origin;
-  if (origin && !allowedOrigins.includes(origin)) { socket.close(4403, 'origin not allowed'); return; }
+  if ((origin && !allowedOrigins.includes(origin)) || (!origin && process.env.NODE_ENV === 'production')) { socket.close(4403, 'origin not allowed'); return; }
   const authTimeout = setTimeout(() => socket.close(4401, 'authentication required'), 5000);
   socket.on('message', async raw => {
     try {
@@ -291,7 +321,9 @@ app.get<{ Params: { matchId: string } }>('/v1/matches/:matchId/stream', { websoc
     if (!message) { socket.close(4400, 'invalid message'); return; }
     if (!principal) {
       if (message.type !== 'session.authenticate') { socket.close(4401, 'authentication required'); return; }
-      const authenticated = await authenticateRawToken(message.token);
+      const authenticated = typeof message.token === 'string'
+        ? await authenticateRawToken(message.token)
+        : await authenticate(request);
       if (!authenticated || !pool) { socket.close(4401, 'invalid session'); return; }
       const membership = await pool.query('UPDATE participants SET connected=true WHERE match_id=$1 AND player_id=$2 RETURNING player_id', [matchId, authenticated.playerId]);
       if (!membership.rowCount) { socket.close(4403, 'not a lobby participant'); return; }
