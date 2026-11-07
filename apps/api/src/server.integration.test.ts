@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import pg from 'pg';
 import WebSocket from 'ws';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -43,7 +43,7 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
   const sockets: WebSocket[] = [];
 
   beforeAll(async () => {
-    const migration = await readFile(fileURLToPath(new URL('../migrations/001_initial.sql', import.meta.url)), 'utf8');
+    const migration = await readFile(resolve(process.cwd(), 'apps/api/migrations/001_initial.sql'), 'utf8');
     await pool!.query(migration);
     await pool!.query('TRUNCATE matches, players, guest_sessions CASCADE');
     expect((await pool!.query<{ version: string }>('SELECT PostGIS_Version() AS version')).rows[0]?.version).toBeTruthy();
@@ -56,7 +56,6 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
   afterAll(async () => {
     for (const socket of sockets) socket.close();
     await app.close();
-    await pool?.end();
   });
 
   it('recovers cookie identity and lobby, synchronizes three real test clients, and deduplicates READY', async () => {
