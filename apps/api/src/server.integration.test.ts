@@ -1,8 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import pg from 'pg';
 import WebSocket from 'ws';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { applyMigrations } from './migrate';
 
 const { app } = await import('./server');
 const { pool } = await import('./db');
@@ -43,8 +42,7 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
   const sockets: WebSocket[] = [];
 
   beforeAll(async () => {
-    const migration = await readFile(resolve(process.cwd(), 'apps/api/migrations/001_initial.sql'), 'utf8');
-    await pool!.query(migration);
+    await applyMigrations(pool!);
     await pool!.query('TRUNCATE matches, players, guest_sessions CASCADE');
     expect((await pool!.query<{ version: string }>('SELECT PostGIS_Version() AS version')).rows[0]?.version).toBeTruthy();
     await app.listen({ host: '127.0.0.1', port: 0 });

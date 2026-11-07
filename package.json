@@ -15,7 +15,7 @@
     "api:dev": "npm run api:migrate && node --env-file-if-exists=.env --import tsx --watch apps/api/src/server.ts",
     "api:migrate": "node --env-file-if-exists=.env --import tsx apps/api/src/migrate.ts",
     "api:build": "node scripts/build-api.mjs",
-    "api:start": "node --env-file-if-exists=.env dist/api/migrate.js && node --env-file-if-exists=.env dist/api/server.js",
+    "api:start": "HUNTZONE_MIGRATIONS_DIR=dist/migrations node --env-file-if-exists=.env dist/api/migrate.js && node --env-file-if-exists=.env dist/api/server.js",
     "api:typecheck": "tsc --noEmit -p apps/api/tsconfig.json",
     "api:test:integration": "vitest run apps/api/src/server.integration.test.ts",
     "preview": "vite preview"

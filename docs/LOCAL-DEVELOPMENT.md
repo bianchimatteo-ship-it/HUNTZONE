@@ -26,7 +26,7 @@ DATABASE_URL=postgres://huntzone:huntzone_local_only@127.0.0.1:54329/huntzone np
 DATABASE_URL=postgres://huntzone:huntzone_local_only@127.0.0.1:54329/huntzone npm run api:start
 ```
 
-`api:start` applies the schema before launching the compiled Fastify server. A deployed API must supply its own private `DATABASE_URL`, `CORS_ORIGINS`, `PUBLIC_APP_ORIGIN`, `API_HOST`, `API_PORT`, and `NODE_ENV=production`; use HTTPS, a single backend instance, and a database in the same region. The frontend receives only `VITE_API_BASE_URL`. Never put a database URL or session credential in a frontend build variable.
+`api:start` applies the schema before launching the compiled Fastify server. A deployed API must supply its own private `DATABASE_URL`, `CORS_ORIGINS`, `PUBLIC_APP_ORIGIN`, `API_HOST`, `API_PORT`, `NODE_ENV=production`, and `TRUST_PROXY=true` when it is behind a trusted HTTPS proxy; use HTTPS, a single backend instance, and a database in the same region. The frontend receives only `VITE_API_BASE_URL`. Never put a database URL or session credential in a frontend build variable.
 
 Production browser sessions use Secure, HttpOnly, SameSite=None cookies and require exact credentialed CORS origins. For reliable browser cookie behavior, serve the API on a same-site HTTPS domain where possible. Local sessions use HttpOnly SameSite=Lax cookies. WebSocket connections authenticate using the same cookie and an allow-listed Origin.
 
