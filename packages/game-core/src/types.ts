@@ -8,6 +8,7 @@ export type MatchConfig = {
   playerCap: number;
   radiusMeters: number;
   durationSeconds: number;
+  captureMethod: 'radius' | 'pin' | 'automatic';
 };
 
 export type LobbyPlayer = {

@@ -5,8 +5,10 @@ type Session = { playerId: string; displayName: string };
 type Player = { id: string; displayName: string; ready: boolean; connected: boolean };
 type Snapshot = {
   matchId: string; inviteCode: string; inviteUrl?: string; hostPlayerId: string; viewerPlayerId: string;
-  isHost: boolean; revision: number; phase: string; config: { modeId: ModeId; playerCap: number; radiusMeters: number; durationSeconds: number };
-  players: Player[]; capabilities?: { start: boolean; gameplay: boolean };
+  isHost: boolean; revision: number; phase: string; countdownEndsAt?: string | null;
+  roleId?: string; teamId?: string | null; virtualStatus?: string; captureAvailableAt?: string; deadlineAt?: string;
+  config: { modeId: ModeId; playerCap: number; radiusMeters: number; durationSeconds: number; captureMethod: 'radius' | 'pin' | 'automatic' };
+  players: Player[]; capabilities?: { start: boolean; roles: boolean; gameplay: boolean };
 };
 type ServiceState = 'checking' | 'unconfigured' | 'unavailable' | 'ready';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -37,6 +39,7 @@ export default function OnlineApp() {
   const [modeId, setModeId] = useState<ModeId>('classic-hide-and-seek');
   const [playerCap, setPlayerCap] = useState(8);
   const [radiusMeters, setRadiusMeters] = useState(500);
+  const [captureMethod, setCaptureMethod] = useState<'radius' | 'pin' | 'automatic'>('radius');
   const [durationMinutes, setDurationMinutes] = useState(20);
   const [inviteCode, setInviteCode] = useState(new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('code') ?? '');
   const [session, setSession] = useState<Session | null>(null);
@@ -120,7 +123,7 @@ export default function OnlineApp() {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const guest = await createGuest();
-      const lobby = await request<Snapshot>('/v1/lobbies', { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60 });
+      const lobby = await request<Snapshot>('/v1/lobbies', { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60, captureMethod });
       setSession(guest); setSnapshot(lobby);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Creazione lobby non riuscita.'); }
     finally { setBusy(false); }
@@ -145,6 +148,18 @@ export default function OnlineApp() {
       });
       setSnapshot(result.snapshot);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Stato READY non confermato.'); }
+    finally { setBusy(false); }
+  }
+
+  async function startMatch() {
+    if (!session || !snapshot) return;
+    setBusy(true); setError('');
+    try {
+      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/start`, {
+        commandId: crypto.randomUUID(), expectedRevision: currentRevision.current,
+      });
+      setSnapshot(result.snapshot);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Avvio non confermato dal server.'); }
     finally { setBusy(false); }
   }
 
@@ -177,6 +192,7 @@ export default function OnlineApp() {
           <p className="online-dev-note">La lobby consente di provare inviti e READY reali. Avvio partita e gameplay restano disabilitati finché le regole server-authoritative non sono completate.</p>
           <div className="online-form-grid"><label>Posti<input type="number" min={MODE_PRESETS[modeId].minPlayers} max={MODE_PRESETS[modeId].maxPlayers} value={playerCap} onChange={event => setPlayerCap(Number(event.target.value))} /></label><label>Campo · metri<input type="number" min={100} max={3000} step={100} value={radiusMeters} onChange={event => setRadiusMeters(Number(event.target.value))} /></label></div>
           <label>Durata prevista · minuti<input type="number" min={10} max={120} value={durationMinutes} onChange={event => setDurationMinutes(Number(event.target.value))} /></label>
+          <label>Sistema di cattura<select value={captureMethod} onChange={event => setCaptureMethod(event.target.value as typeof captureMethod)}><option value="radius">RAGGIO</option><option value="pin">PIN + prossimità</option><option value="automatic">AUTOMATICA</option></select></label>
           <button className="online-button online-button--primary" disabled={!canConnect} type="submit">{busy ? 'CONNESSIONE…' : 'CREA LOBBY REALE'}<span>↗</span></button>
         </form>
         <form className="online-card online-card--join" onSubmit={joinLobby}>
@@ -192,7 +208,7 @@ export default function OnlineApp() {
     </section> : <section className="online-content online-lobby">
       <div className="online-lobby-head"><p className="eyebrow"><span>02</span><i /> LOBBY PRIVATA · PERSONE COLLEGATE</p><h1>La squadra<br /><em>si raduna.</em></h1><p>Ogni partecipante qui sotto ha effettuato l'accesso con una sessione reale.</p></div>
       <div className="online-invite"><div><small>CODICE INVITO</small><strong>{snapshot.inviteCode}</strong><span>{snapshot.inviteUrl}</span></div><button className="online-button online-button--secondary" onClick={() => void copyInvite()}>{copied ? 'COPIATO' : 'CONDIVIDI INVITO'} ↗</button></div>
-      <div className="online-lobby-grid"><section className="online-card"><div className="online-card-title"><span>{snapshot.players.length} / {snapshot.config.playerCap} PARTECIPANTI REALI</span><h2>Lobby {snapshot.phase.toUpperCase()}</h2></div><ul className="online-roster">{snapshot.players.map(player => <li key={player.id} data-connected={player.connected}><span className="online-avatar">{player.displayName.slice(0, 1).toUpperCase()}</span><span className="online-player-name">{player.displayName}{player.id === snapshot.hostPlayerId && <small>HOST</small>}{player.id === snapshot.viewerPlayerId && <small>TU</small>}</span><span className={`online-player-state ${!player.connected ? 'is-disconnected' : player.ready ? 'is-ready' : ''}`}>{!player.connected ? 'RICONNESSIONE' : player.ready ? 'READY' : 'IN ATTESA'}</span></li>)}</ul><button className="online-button online-button--primary" disabled={busy} onClick={() => void setReady(!snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready)}>{snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready ? 'ANNULLA READY' : 'CONFERMA READY'}</button><p className="online-dev-note">L'avvio è disabilitato: manca ancora il motore multiplayer completo per {mode.displayName}.</p></section><aside className="online-card online-status-card"><span className="status-dot status-dot--green" /><strong>NESSUN BOT</strong><p>I partecipanti vengono dal server e spariscono solo quando escono o perdono la connessione. Una disconnessione non conta come cattura.</p><p><b>Stato rete:</b> riconnessione automatica attiva</p><p><b>GPS:</b> non richiesto in lobby</p></aside></div>
+      <div className="online-lobby-grid"><section className="online-card"><div className="online-card-title"><span>{snapshot.players.length} / {snapshot.config.playerCap} PARTECIPANTI REALI</span><h2>{snapshot.phase === 'active' ? 'PARTITA IN CORSO' : snapshot.phase === 'countdown' ? 'CONTO ALLA ROVESCIA' : `LOBBY ${snapshot.phase.toUpperCase()}`}</h2></div><ul className="online-roster">{snapshot.players.map(player => <li key={player.id} data-connected={player.connected}><span className="online-avatar">{player.displayName.slice(0, 1).toUpperCase()}</span><span className="online-player-name">{player.displayName}{player.id === snapshot.hostPlayerId && <small>HOST</small>}{player.id === snapshot.viewerPlayerId && <small>TU</small>}</span><span className={`online-player-state ${!player.connected ? 'is-disconnected' : player.ready ? 'is-ready' : ''}`}>{!player.connected ? 'RICONNESSIONE' : player.ready ? 'READY' : 'IN ATTESA'}</span></li>)}</ul>{snapshot.phase === 'lobby' && <><button className="online-button online-button--primary" disabled={busy} onClick={() => void setReady(!snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready)}>{snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready ? 'ANNULLA READY' : 'CONFERMA READY'}</button>{snapshot.isHost && <button className="online-button online-button--secondary" disabled={busy || !snapshot.capabilities?.start} onClick={() => void startMatch()}>AVVIA CLASSIC · 10 SEC</button>}<p className="online-dev-note">{mode.displayName}: l'avvio richiede area selezionata, almeno tre giocatori connessi e tutti READY.</p></>}{snapshot.phase === 'countdown' && <p className="online-dev-note">Il server sta completando l'avvio. Ruoli assegnati allo scadere del conto alla rovescia.</p>}{snapshot.phase === 'active' && <div className="online-dev-note"><b>Il tuo ruolo: {snapshot.roleId?.toUpperCase() ?? 'IN CARICAMENTO'}</b><p>Il ruolo viene inviato solo al tuo client. Il GPS, la mappa di gioco e le catture non sono ancora attivi.</p></div>}</section><aside className="online-card online-status-card"><span className="status-dot status-dot--green" /><strong>NESSUN BOT</strong><p>I partecipanti vengono dal server e spariscono solo quando escono o perdono la connessione. Una disconnessione non conta come cattura.</p><p><b>Stato rete:</b> riconnessione automatica attiva</p><p><b>GPS:</b> non richiesto in lobby</p></aside></div>
       {error && <p className="online-error" role="alert">{error}</p>}
     </section>}
     <footer className="online-footer">HUNTZONE © 2026 <span>GIOCA CON ATTENZIONE · STOP IN QUALSIASI MOMENTO</span></footer>

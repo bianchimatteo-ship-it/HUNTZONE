@@ -1,10 +1,10 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import { MODE_IDS, applyLobbyCommand, createLobby, type MatchState } from '../../../packages/game-core/src/index.js';
+import { MODE_IDS, applyLobbyCommand, createLobby, createMatchRuntime, type MatchRuntime, type MatchState } from '../../../packages/game-core/src/index.js';
 import { authenticate, hashSessionToken, newSessionToken, sessionTokenFromRequest, type Principal } from './auth.js';
 import { pool, withTransaction } from './db.js';
 
@@ -19,9 +19,10 @@ const app = Fastify({
 });
 
 type ParticipantRow = { id: string; display_name: string; ready: boolean; connected: boolean; host: boolean };
-type MatchRow = { id: string; invite_code: string; host_player_id: string; mode_id: string; config: MatchState['config']; phase: MatchState['phase']; revision: string };
+type MatchRow = { id: string; invite_code: string; host_player_id: string; mode_id: string; config: MatchState['config']; phase: string; revision: string; countdown_ends_at?: Date | string | null; has_area?: boolean };
 type ClientSocket = { playerId: string; socket: WebSocket };
 const socketsByMatch = new Map<string, Set<ClientSocket>>();
+const countdownTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function inviteCode() {
   const bytes = randomBytes(6);
@@ -75,10 +76,72 @@ async function loadLobbyState(client: import('pg').PoolClient, matchId: string):
   };
 }
 
+async function finishCountdown(matchId: string): Promise<boolean> {
+  if (!pool) return false;
+  const result = await withTransaction(async client => {
+    const matchResult = await client.query<{ id: string; host_player_id: string; mode_id: string; config: MatchState['config']; phase: string; revision: string; area_center: unknown; due: boolean }>(
+      `SELECT id,host_player_id,mode_id,config,phase,revision,area_center,
+              countdown_ends_at <= clock_timestamp() AS due
+         FROM matches WHERE id=$1 FOR UPDATE`, [matchId],
+    );
+    const match = matchResult.rows[0];
+    if (!match || match.phase !== 'countdown' || !match.due) return false;
+    const participants = await client.query<{ player_id: string; ready: boolean; connected: boolean }>(
+      'SELECT player_id,ready,connected FROM participants WHERE match_id=$1 ORDER BY joined_at,player_id', [matchId],
+    );
+    const valid = match.mode_id === 'classic-hide-and-seek' && match.area_center !== null
+      && participants.rows.length >= 3 && participants.rows.length <= match.config.playerCap
+      && participants.rows.every(player => player.ready && player.connected);
+    const clock = await client.query<{ now_ms: string }>('SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now_ms');
+    const nowMs = Number(clock.rows[0]!.now_ms);
+    const revision = Number(match.revision) + 1;
+    if (!valid) {
+      await client.query('UPDATE participants SET ready=false WHERE match_id=$1', [matchId]);
+      await client.query('UPDATE matches SET phase=\'lobby\',countdown_ends_at=NULL,revision=$2 WHERE id=$1', [matchId, revision]);
+      await client.query('INSERT INTO match_events(match_id,revision,event_type,payload) VALUES($1,$2,$3,$4)',
+        [matchId, revision, 'start.cancelled', JSON.stringify({ reason: 'preconditions-changed' })]);
+      return true;
+    }
+    const created = createMatchRuntime({
+      modeId: 'classic-hide-and-seek', hostPlayerId: match.host_player_id,
+      players: participants.rows.map(player => ({ id: player.player_id, ready: player.ready })),
+      durationSeconds: match.config.durationSeconds, captureMethod: match.config.captureMethod,
+      nowMs, randomUnit: () => randomInt(0, 0x1_0000_0000) / 0x1_0000_0000,
+    });
+    if (!created.ok) throw new Error(`MATCH_START_REJECTED:${created.error.code}`);
+    const runtime: MatchRuntime = { ...created.value, revision };
+    for (const player of runtime.players) {
+      await client.query('UPDATE participants SET role_id=$3,team_id=$4,virtual_status=$5 WHERE match_id=$1 AND player_id=$2',
+        [matchId, player.playerId, player.roleId, player.teamId ?? null, player.status]);
+    }
+    await client.query('UPDATE matches SET phase=\'active\',countdown_ends_at=NULL,started_at=to_timestamp($2/1000.0),revision=$3 WHERE id=$1', [matchId, nowMs, revision]);
+    await client.query('INSERT INTO match_events(match_id,revision,event_type,payload) VALUES($1,$2,$3,$4)',
+      [matchId, revision, 'match.started', JSON.stringify({ modeId: match.mode_id, playerCount: participants.rows.length, engineVersion: runtime.engineVersion })]);
+    await client.query('INSERT INTO match_checkpoints(match_id,revision,engine_version,virtual_state) VALUES($1,$2,$3,$4)',
+      [matchId, revision, runtime.engineVersion, JSON.stringify(runtime)]);
+    return true;
+  });
+  countdownTimers.delete(matchId);
+  return result;
+}
+
+function scheduleCountdown(matchId: string, endsAt: number) {
+  const current = countdownTimers.get(matchId);
+  if (current) clearTimeout(current);
+  const delay = Math.max(0, Math.min(2_147_000_000, endsAt - Date.now()));
+  countdownTimers.set(matchId, setTimeout(() => {
+    void finishCountdown(matchId)
+      .then(async changed => { if (changed) await broadcastSnapshot(matchId); })
+      .catch(() => scheduleCountdown(matchId, Date.now() + 1500));
+  }, delay));
+}
+
 async function publicSnapshot(matchId: string, viewerPlayerId: string) {
   if (!pool) throw new Error('DATABASE_UNAVAILABLE');
+  await finishCountdown(matchId);
   const match = await pool.query<MatchRow>(
-    `SELECT m.id, m.invite_code, m.host_player_id, m.mode_id, m.config, m.phase, m.revision
+    `SELECT m.id, m.invite_code, m.host_player_id, m.mode_id, m.config, m.phase, m.revision,
+            m.countdown_ends_at, m.area_center IS NOT NULL AS has_area
        FROM matches m JOIN participants x ON x.match_id=m.id
       WHERE m.id=$1 AND x.player_id=$2`, [matchId, viewerPlayerId],
   );
@@ -89,6 +152,17 @@ async function publicSnapshot(matchId: string, viewerPlayerId: string) {
        FROM participants x JOIN players p ON p.id=x.player_id WHERE x.match_id=$1 ORDER BY x.joined_at,p.id`,
     [matchId, row.host_player_id],
   );
+  const own = await pool.query<{ role_id: string | null; team_id: string | null; virtual_status: string }>(
+    'SELECT role_id,team_id,virtual_status FROM participants WHERE match_id=$1 AND player_id=$2', [matchId, viewerPlayerId],
+  );
+  const checkpoint = row.phase === 'active' || row.phase === 'completed' || row.phase === 'paused'
+    ? await pool.query<{ virtual_state: MatchRuntime }>('SELECT virtual_state FROM match_checkpoints WHERE match_id=$1 ORDER BY revision DESC LIMIT 1', [matchId])
+    : { rows: [] as { virtual_state: MatchRuntime }[] };
+  const runtime = checkpoint.rows[0]?.virtual_state;
+  const isClassicLobby = row.phase === 'lobby' && row.mode_id === 'classic-hide-and-seek';
+  const canStart = Boolean(isClassicLobby && viewerPlayerId === row.host_player_id && row.has_area
+    && players.rows.length >= 3 && players.rows.length <= row.config.playerCap
+    && players.rows.every(player => player.connected && player.ready));
   return {
     matchId: row.id,
     inviteCode: row.invite_code,
@@ -98,8 +172,12 @@ async function publicSnapshot(matchId: string, viewerPlayerId: string) {
     revision: Number(row.revision),
     phase: row.phase,
     config: row.config,
+    countdownEndsAt: row.countdown_ends_at ? new Date(row.countdown_ends_at).toISOString() : null,
     players: players.rows.map(player => ({ id: player.id, displayName: player.display_name, ready: player.ready, connected: player.connected })),
-    capabilities: { start: false, roles: false, gameplay: false },
+    ...(own.rows[0]?.role_id ? { roleId: own.rows[0].role_id, teamId: own.rows[0].team_id } : {}),
+    virtualStatus: own.rows[0]?.virtual_status ?? 'active',
+    ...(runtime ? { captureAvailableAt: new Date(runtime.captureAvailableAtMs).toISOString(), deadlineAt: new Date(runtime.deadlineAtMs).toISOString() } : {}),
+    capabilities: { start: canStart, roles: Boolean(own.rows[0]?.role_id), gameplay: false },
   };
 }
 
@@ -198,23 +276,23 @@ app.get('/v1/guest-sessions/current', async (request, reply) => {
   try {
     const active = await pool.query<{ id: string }>(
       `SELECT m.id FROM matches m JOIN participants p ON p.match_id=m.id
-        WHERE p.player_id=$1 AND m.phase='lobby' ORDER BY p.joined_at DESC LIMIT 1`, [principal.playerId],
+        WHERE p.player_id=$1 AND m.phase IN ('lobby','countdown','active','paused') ORDER BY p.joined_at DESC LIMIT 1`, [principal.playerId],
     );
     const match = active.rows[0] ? await publicSnapshot(active.rows[0].id, principal.playerId) : null;
     return reply.send({ session: principal, match });
   } catch { return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Impossibile recuperare la sessione.' } }); }
 });
 
-app.post<{ Body: { modeId: string; playerCap: number; radiusMeters: number; durationSeconds: number; displayName?: string } }>('/v1/lobbies', {
+app.post<{ Body: { modeId: string; playerCap: number; radiusMeters: number; durationSeconds: number; captureMethod?: MatchState['config']['captureMethod']; displayName?: string } }>('/v1/lobbies', {
   schema: { body: { type: 'object', additionalProperties: false, required: ['modeId', 'playerCap', 'radiusMeters', 'durationSeconds'], properties: {
-    modeId: { type: 'string', enum: MODE_IDS }, playerCap: { type: 'integer', minimum: 3, maximum: 30 }, radiusMeters: { type: 'integer', minimum: 100, maximum: 3000 }, durationSeconds: { type: 'integer', minimum: 600, maximum: 7200 }, displayName: { type: 'string', minLength: 2, maxLength: 32 },
+    modeId: { type: 'string', enum: MODE_IDS }, playerCap: { type: 'integer', minimum: 3, maximum: 30 }, radiusMeters: { type: 'integer', minimum: 100, maximum: 3000 }, durationSeconds: { type: 'integer', minimum: 600, maximum: 7200 }, captureMethod: { type: 'string', enum: ['radius', 'pin', 'automatic'] }, displayName: { type: 'string', minLength: 2, maxLength: 32 },
   } } },
 }, async (request, reply) => {
   const principal = await requirePrincipal(request, reply);
   if (!principal) return;
   const validated = createLobby({
     matchId: randomUUID(), inviteCode: 'INVITE', hostPlayerId: principal.playerId, hostDisplayName: principal.displayName,
-    config: { schemaVersion: 1, modeId: request.body.modeId, playerCap: request.body.playerCap, radiusMeters: request.body.radiusMeters, durationSeconds: request.body.durationSeconds },
+    config: { schemaVersion: 1, modeId: request.body.modeId, playerCap: request.body.playerCap, radiusMeters: request.body.radiusMeters, durationSeconds: request.body.durationSeconds, captureMethod: request.body.captureMethod ?? 'radius' },
   });
   if (!validated.ok) return reply.code(400).send({ error: validated.error });
   try {
@@ -308,6 +386,56 @@ app.post<{ Params: { matchId: string }; Body: { commandId: string; expectedRevis
   } catch { return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Comando non confermato dal server.' } }); }
 });
 
+app.post<{ Params: { matchId: string }; Body: { commandId: string; expectedRevision: number } }>('/v1/matches/:matchId/start', {
+  config: { rateLimit: { max: 8, timeWindow: '1 minute' } },
+  schema: { body: { type: 'object', additionalProperties: false, required: ['commandId', 'expectedRevision'], properties: {
+    commandId: { type: 'string', minLength: 8, maxLength: 80 }, expectedRevision: { type: 'integer', minimum: 0 },
+  } } },
+}, async (request, reply) => {
+  const principal = await requirePrincipal(request, reply);
+  if (!principal) return;
+  try {
+    const transition = await withTransaction(async client => {
+      const matchResult = await client.query<{ host_player_id: string; mode_id: string; config: MatchState['config']; phase: string; revision: string; has_area: boolean }>(
+        'SELECT host_player_id,mode_id,config,phase,revision,area_center IS NOT NULL AS has_area FROM matches WHERE id=$1 FOR UPDATE', [request.params.matchId],
+      );
+      const match = matchResult.rows[0];
+      if (!match) return { ok: false as const, status: 404, message: 'Match non trovata.' };
+      const duplicate = await client.query<{ result: { revision: number; countdownEndsAt: string } }>(
+        'SELECT result FROM processed_commands WHERE match_id=$1 AND actor_player_id=$2 AND command_id=$3',
+        [request.params.matchId, principal.playerId, request.body.commandId],
+      );
+      if (duplicate.rows[0]) return { ok: true as const, ...duplicate.rows[0].result, duplicate: true };
+      if (principal.playerId !== match.host_player_id) return { ok: false as const, status: 403, message: 'Solo l’host può avviare la partita.' };
+      if (match.phase !== 'lobby' || match.mode_id !== 'classic-hide-and-seek') return { ok: false as const, status: 409, message: 'Questa modalità o fase non può essere avviata.' };
+      if (!match.has_area) return { ok: false as const, status: 409, message: 'Seleziona prima il centro dell’area di gioco.' };
+      const participants = await client.query<{ player_id: string; ready: boolean; connected: boolean }>(
+        'SELECT player_id,ready,connected FROM participants WHERE match_id=$1 ORDER BY joined_at,player_id', [request.params.matchId],
+      );
+      if (participants.rows.length < 3 || participants.rows.length > match.config.playerCap
+        || participants.rows.some(player => !player.ready || !player.connected)) {
+        return { ok: false as const, status: 409, message: 'Servono almeno tre partecipanti connessi e tutti READY.' };
+      }
+      const currentRevision = Number(match.revision);
+      if (request.body.expectedRevision !== currentRevision) return { ok: false as const, status: 409, message: 'La lobby è cambiata. Aggiorna lo stato e riprova.' };
+      const countdown = await client.query<{ ends_at: Date }>("SELECT clock_timestamp() + interval '10 seconds' AS ends_at");
+      const countdownEndsAt = countdown.rows[0]!.ends_at.toISOString();
+      const revision = currentRevision + 1;
+      const result = { revision, countdownEndsAt };
+      await client.query('UPDATE matches SET phase=\'countdown\',countdown_ends_at=$2,revision=$3 WHERE id=$1', [request.params.matchId, countdownEndsAt, revision]);
+      await client.query('INSERT INTO match_events(match_id,revision,event_type,actor_player_id,payload) VALUES($1,$2,$3,$4,$5)',
+        [request.params.matchId, revision, 'start.countdown', principal.playerId, JSON.stringify({ durationSeconds: 10, participantCount: participants.rows.length })]);
+      await client.query('INSERT INTO processed_commands(match_id,actor_player_id,command_id,committed_revision,result) VALUES($1,$2,$3,$4,$5)',
+        [request.params.matchId, principal.playerId, request.body.commandId, revision, JSON.stringify(result)]);
+      return { ok: true as const, ...result, duplicate: false };
+    });
+    if (!transition.ok) return reply.code(transition.status).send({ error: { code: 'START_REJECTED', message: transition.message } });
+    scheduleCountdown(request.params.matchId, Date.parse(transition.countdownEndsAt));
+    await broadcastSnapshot(request.params.matchId);
+    return reply.send({ ...transition, snapshot: await publicSnapshot(request.params.matchId, principal.playerId) });
+  } catch { return reply.code(503).send({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Avvio non confermato dal server.' } }); }
+});
+
 app.get<{ Params: { matchId: string } }>('/v1/matches/:matchId/stream', { websocket: true }, (socket, request) => {
   let principal: Principal | null = null;
   let matchId = request.params.matchId;
@@ -369,9 +497,17 @@ app.setErrorHandler((error, request, reply) => {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   await app.listen({ host: HOST, port: PORT });
+  if (pool) {
+    const pending = await pool.query<{ id: string; countdown_ends_at: Date }>("SELECT id,countdown_ends_at FROM matches WHERE phase='countdown' AND countdown_ends_at IS NOT NULL");
+    for (const match of pending.rows) scheduleCountdown(match.id, match.countdown_ends_at.getTime());
+  }
   app.log.info({ port: PORT, databaseConfigured: Boolean(pool) }, 'HUNTZONE API listening');
 }
 
-app.addHook('onClose', async () => { await pool?.end(); });
+app.addHook('onClose', async () => {
+  for (const timer of countdownTimers.values()) clearTimeout(timer);
+  countdownTimers.clear();
+  await pool?.end();
+});
 
 export { app };

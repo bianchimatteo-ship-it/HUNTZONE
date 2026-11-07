@@ -17,7 +17,7 @@ export function validateMatchConfig(input: unknown): GameCoreResult<MatchConfig>
 
   const candidate = input as Record<string, unknown>;
   const fields = Object.keys(candidate);
-  const allowed = ['schemaVersion', 'modeId', 'playerCap', 'radiusMeters', 'durationSeconds'];
+  const allowed = ['schemaVersion', 'modeId', 'playerCap', 'radiusMeters', 'durationSeconds', 'captureMethod'];
   const unknown = fields.filter(field => !allowed.includes(field));
   const invalid: string[] = [...unknown];
 
@@ -25,6 +25,7 @@ export function validateMatchConfig(input: unknown): GameCoreResult<MatchConfig>
   if (typeof candidate.modeId !== 'string' || !MODE_IDS.includes(candidate.modeId as ModeId)) invalid.push('modeId');
   if (!Number.isInteger(candidate.radiusMeters) || Number(candidate.radiusMeters) < 100 || Number(candidate.radiusMeters) > 3000) invalid.push('radiusMeters');
   if (!Number.isInteger(candidate.durationSeconds) || Number(candidate.durationSeconds) < 600 || Number(candidate.durationSeconds) > 7200) invalid.push('durationSeconds');
+  if (candidate.captureMethod !== undefined && !['radius', 'pin', 'automatic'].includes(String(candidate.captureMethod))) invalid.push('captureMethod');
 
   const mode = typeof candidate.modeId === 'string' && MODE_IDS.includes(candidate.modeId as ModeId)
     ? MODE_PRESETS[candidate.modeId as ModeId]
@@ -49,6 +50,7 @@ export function validateMatchConfig(input: unknown): GameCoreResult<MatchConfig>
       playerCap: Number(candidate.playerCap),
       radiusMeters: Number(candidate.radiusMeters),
       durationSeconds: Number(candidate.durationSeconds),
+      captureMethod: (candidate.captureMethod ?? 'radius') as MatchConfig['captureMethod'],
     },
   };
 }

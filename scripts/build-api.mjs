@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { cp, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const root = process.cwd();
@@ -18,4 +18,4 @@ const result = spawnSync(esbuild, [
 if (result.status !== 0) process.exit(result.status ?? 1);
 const migrations = resolve(root, 'dist/migrations');
 await mkdir(migrations, { recursive: true });
-await copyFile(resolve(root, 'apps/api/migrations/001_initial.sql'), resolve(migrations, '001_initial.sql'));
+await cp(resolve(root, 'apps/api/migrations'), migrations, { recursive: true });

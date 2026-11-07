@@ -64,10 +64,14 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
 
     const created = await app.inject({
       method: 'POST', url: '/v1/lobbies', headers: { cookie: host.cookie, origin },
-      payload: { modeId: 'classic-hide-and-seek', playerCap: 3, radiusMeters: 500, durationSeconds: 1200 },
+      payload: { modeId: 'classic-hide-and-seek', playerCap: 3, radiusMeters: 500, durationSeconds: 1200, captureMethod: 'radius' },
     });
     expect(created.statusCode).toBe(201);
     const match = created.json() as { matchId: string; inviteCode: string; revision: number };
+    await pool!.query(
+      'UPDATE matches SET area_center=ST_SetSRID(ST_MakePoint($2,$3),4326)::geography WHERE id=$1',
+      [match.matchId, 9.19, 45.46],
+    );
 
     const second = await createGuest('Second Player');
     const third = await createGuest('Third Player');
@@ -83,6 +87,12 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
     expect(restored.json().match.matchId).toBe(match.matchId);
 
     for (const guest of [host, second, third]) sockets.push(await openSocket(match.matchId, guest));
+
+    const nonHostStart = await app.inject({
+      method: 'POST', url: `/v1/matches/${match.matchId}/start`, headers: { cookie: second.cookie, origin },
+      payload: { commandId: 'start-forbidden-01', expectedRevision: 2 },
+    });
+    expect(nonHostStart.statusCode).toBe(403);
 
     for (const [index, guest] of [host, second, third].entries()) {
       const ready = await app.inject({
@@ -101,10 +111,31 @@ describe.skipIf(!process.env.DATABASE_URL)('PostGIS-backed guest and lobby integ
       }
     }
 
+    const start = await app.inject({
+      method: 'POST', url: `/v1/matches/${match.matchId}/start`, headers: { cookie: host.cookie, origin },
+      payload: { commandId: 'start-command-001', expectedRevision: 5 },
+    });
+    expect(start.statusCode).toBe(200);
+    expect(start.json().snapshot.phase).toBe('countdown');
+    await pool!.query('UPDATE matches SET countdown_ends_at=clock_timestamp() WHERE id=$1', [match.matchId]);
+
+    const privateViews = [];
+    for (const guest of [host, second, third]) {
+      const view = await app.inject({ method: 'GET', url: `/v1/matches/${match.matchId}`, headers: { cookie: guest.cookie, origin } });
+      expect(view.statusCode).toBe(200);
+      expect(view.json().phase).toBe('active');
+      expect(view.json().players.every((player: Record<string, unknown>) => !('roleId' in player))).toBe(true);
+      expect(['seeker', 'hider']).toContain(view.json().roleId);
+      privateViews.push(view.json());
+    }
+    expect(privateViews.filter(view => view.roleId === 'seeker')).toHaveLength(1);
+    expect(privateViews.filter(view => view.roleId === 'hider')).toHaveLength(2);
+    expect(privateViews.every(view => view.captureAvailableAt && view.deadlineAt)).toBe(true);
+
     const outsider = await createGuest('Outside Player');
     const forbidden = await app.inject({ method: 'GET', url: `/v1/matches/${match.matchId}`, headers: { cookie: outsider.cookie, origin } });
     expect(forbidden.statusCode).toBe(404);
     const events = await pool!.query<{ event_type: string }>('SELECT event_type FROM match_events WHERE match_id=$1 ORDER BY revision', [match.matchId]);
-    expect(events.rows.map(row => row.event_type)).toEqual(['lobby.created', 'player.joined', 'player.joined', 'player.ready-changed', 'player.ready-changed', 'player.ready-changed']);
+    expect(events.rows.map(row => row.event_type)).toEqual(['lobby.created', 'player.joined', 'player.joined', 'player.ready-changed', 'player.ready-changed', 'player.ready-changed', 'start.countdown', 'match.started']);
   });
 });
