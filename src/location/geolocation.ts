@@ -62,6 +62,8 @@ export function createLocationTracker(
   const freshnessMs = options.freshnessMs ?? FRESHNESS_MS;
   let watchId: number | null = null;
   let disposed = false;
+  let timeoutRetry: ReturnType<typeof setTimeout> | null = null;
+  let timeoutRetryCount = 0;
   let current: LocationSnapshot = { status: 'NOT_REQUESTED', sample: null, ageMs: null, message: messages.NOT_REQUESTED };
 
   const emit = (status: LocationStatus, sample: LocationSample | null = current.sample, ageMs: number | null = current.ageMs) => {
@@ -71,38 +73,58 @@ export function createLocationTracker(
   };
 
   const clearActiveWatch = () => {
+    if (timeoutRetry) clearTimeout(timeoutRetry);
+    timeoutRetry = null;
     if (watchId === null) return;
     geolocation?.clearWatch(watchId);
     watchId = null;
   };
 
   const fail = (status: Extract<LocationStatus, 'DENIED' | 'UNAVAILABLE' | 'TIMEOUT'>) => {
+    if (status === 'TIMEOUT' && watchId !== null && timeoutRetryCount < 2) {
+      timeoutRetryCount += 1;
+      emit(status, null, null);
+      if (timeoutRetry) clearTimeout(timeoutRetry);
+      timeoutRetry = setTimeout(() => {
+        timeoutRetry = null;
+        clearActiveWatch();
+        startWatch();
+      }, 2500);
+      return;
+    }
     clearActiveWatch();
     emit(status, null, null);
   };
 
+  const receivePosition = (position: GeolocationPosition) => {
+    timeoutRetryCount = 0;
+    if (timeoutRetry) clearTimeout(timeoutRetry);
+    timeoutRetry = null;
+    const { latitude, longitude, accuracy } = position.coords;
+    const timestampMs = Number(position.timestamp);
+    if (!isValidGeoCoordinate({ latitude, longitude }) || !Number.isFinite(accuracy) || accuracy < 0
+      || !Number.isFinite(timestampMs) || timestampMs > now()) {
+      fail('UNAVAILABLE');
+      return;
+    }
+    const sample: LocationSample = { latitude, longitude, accuracyMeters: accuracy, timestampMs };
+    const ageMs = Math.max(0, now() - timestampMs);
+    emit(ageMs > freshnessMs ? 'STALE' : 'ACTIVE', sample, ageMs);
+  };
+
+  const startWatch = () => {
+    if (disposed || watchId !== null || current.status === 'REQUESTING') return;
+    if (!geolocation) { emit('UNSUPPORTED', null, null); return; }
+    emit('REQUESTING', null, null);
+    try {
+      watchId = geolocation.watchPosition(receivePosition, error => fail(locationErrorStatus(error.code)), WATCH_OPTIONS);
+    } catch { fail('UNAVAILABLE'); }
+  };
+
   return {
     start() {
-      if (disposed || watchId !== null || current.status === 'REQUESTING') return;
-      if (!geolocation) { emit('UNSUPPORTED', null, null); return; }
-      emit('REQUESTING', null, null);
-      try {
-        const id = geolocation.watchPosition(position => {
-          const { latitude, longitude, accuracy } = position.coords;
-          const timestampMs = Number(position.timestamp);
-          if (!isValidGeoCoordinate({ latitude, longitude }) || !Number.isFinite(accuracy) || accuracy < 0
-            || !Number.isFinite(timestampMs) || timestampMs > now()) {
-            fail('UNAVAILABLE');
-            return;
-          }
-          const sample: LocationSample = { latitude, longitude, accuracyMeters: accuracy, timestampMs };
-          const ageMs = Math.max(0, now() - timestampMs);
-          emit(ageMs > freshnessMs ? 'STALE' : 'ACTIVE', sample, ageMs);
-        }, error => fail(locationErrorStatus(error.code)), WATCH_OPTIONS);
-        watchId = id;
-      } catch {
-        fail('UNAVAILABLE');
-      }
+      if (watchId === null && current.status === 'TIMEOUT' && timeoutRetry === null) timeoutRetryCount = 0;
+      startWatch();
     },
     refresh() {
       if (!current.sample || (current.status !== 'ACTIVE' && current.status !== 'STALE')) return;

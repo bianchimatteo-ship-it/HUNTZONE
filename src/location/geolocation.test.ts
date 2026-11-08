@@ -61,13 +61,31 @@ describe('browser geolocation tracker', () => {
     expect(test.tracker.snapshot.ageMs).toBe(30_001);
   });
 
-  it.each([[1, 'DENIED'], [2, 'UNAVAILABLE'], [3, 'TIMEOUT']] as const)('maps browser error %s to %s and clears the watcher', (code, status) => {
+  it.each([[1, 'DENIED'], [2, 'UNAVAILABLE']] as const)('maps browser error %s to %s and clears the watcher', (code, status) => {
     const test = harness();
     test.tracker.start();
     test.failure(code);
     expect(test.tracker.snapshot.status).toBe(status);
     expect(test.geolocation.clearWatch).toHaveBeenCalledWith(42);
     expect(test.tracker.watchId).toBeNull();
+  });
+
+  it('retries temporary timeouts twice without treating them as permission revocation', () => {
+    vi.useFakeTimers();
+    try {
+      const test = harness();
+      test.tracker.start();
+      test.failure(3);
+      expect(test.tracker.snapshot).toMatchObject({ status: 'TIMEOUT', sample: null });
+      expect(test.geolocation.clearWatch).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2500);
+      expect(test.geolocation.watchPosition).toHaveBeenCalledTimes(2);
+      expect(test.geolocation.clearWatch).toHaveBeenCalledWith(42);
+      test.failure(1);
+      expect(test.tracker.snapshot.status).toBe('DENIED');
+      expect(test.geolocation.clearWatch).toHaveBeenCalledTimes(2);
+      test.tracker.stop();
+    } finally { vi.useRealTimers(); }
   });
 
   it('clears an active watch and its precise sample on stop and unmount cleanup', () => {

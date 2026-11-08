@@ -4,6 +4,8 @@ import { type GeoJSONSource, type Map as MapLibreMap, NavigationControl } from '
 import type { GeoCoordinate, LocationSample } from '../location/geolocation';
 import { createAccuracyGeometry, createPlayAreaGeometry } from './geometry';
 import { createStadiaMap, STADIA_STYLE_URL } from './stadiaMapProvider';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import './stadia-map.css';
 
 export type MapLoadStatus =
   | 'INITIALIZING' | 'LOADING_STYLE' | 'LOADING_TILES' | 'READY' | 'DEGRADED'
@@ -75,13 +77,14 @@ const fatalStatuses = new Set<MapLoadStatus>([
 ]);
 
 export default function StadiaMap({
-  center, radiusMeters, deviceSample, focusCommand, onChooseCenter,
+  center, radiusMeters, deviceSample, focusCommand, onChooseCenter, onStatusChange,
 }: {
   center: GeoCoordinate | null;
   radiusMeters: number;
   deviceSample: LocationSample | null;
   focusCommand: FocusCommand | null;
   onChooseCenter: (coordinate: GeoCoordinate) => void;
+  onStatusChange?: (status: MapLoadStatus) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -91,6 +94,7 @@ export default function StadiaMap({
   const [diagnostic, setDiagnostic] = useState<MapDiagnostic | null>(null);
   const loadedRef = useRef(false);
   useEffect(() => { chooseRef.current = onChooseCenter; }, [onChooseCenter]);
+  useEffect(() => { onStatusChange?.(status); }, [onStatusChange, status]);
 
   useEffect(() => {
     const container = containerRef.current;

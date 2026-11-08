@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { MODE_IDS, MODE_PRESETS, type ModeId } from '../packages/game-core/src/modes';
+import { useLocation } from './location/LocationProvider';
+import type { GeoCoordinate } from './location/geolocation';
+import type { MapLoadStatus } from './map/StadiaMap';
+
+const GeoAreaPicker = lazy(() => import('./GeoAreaPicker'));
+const StadiaMap = lazy(() => import('./map/StadiaMap'));
 
 type Session = { playerId: string; displayName: string };
-type Player = { id: string; displayName: string; ready: boolean; connected: boolean };
+type Player = { id: string; displayName: string; ready: boolean; connected: boolean; status?: string };
 type Snapshot = {
   matchId: string; inviteCode: string; inviteUrl?: string; hostPlayerId: string; viewerPlayerId: string;
   isHost: boolean; revision: number; phase: string; countdownEndsAt?: string | null;
   roleId?: string; teamId?: string | null; virtualStatus?: string; captureAvailableAt?: string; deadlineAt?: string;
+  capturePin?: string; captureTargets?: Array<{ id: string; displayName: string }>; winner?: string | null; endReason?: string | null;
+  areaCenter?: GeoCoordinate | null; gpsConsent?: boolean; gpsReady?: boolean;
   config: { modeId: ModeId; playerCap: number; radiusMeters: number; durationSeconds: number; captureMethod: 'radius' | 'pin' | 'automatic' };
-  players: Player[]; capabilities?: { start: boolean; roles: boolean; gameplay: boolean };
+  players: Player[]; capabilities?: { start: boolean; roles: boolean; gameplay: boolean; capture?: boolean };
 };
 type ServiceState = 'checking' | 'unconfigured' | 'unavailable' | 'ready';
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -33,6 +41,7 @@ function apiSocketUrl(matchId: string) {
 }
 
 export default function OnlineApp() {
+  const location = useLocation();
   const [service, setService] = useState<ServiceState>(API_BASE ? 'checking' : 'unconfigured');
   const [serviceMessage, setServiceMessage] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -40,21 +49,30 @@ export default function OnlineApp() {
   const [playerCap, setPlayerCap] = useState(8);
   const [radiusMeters, setRadiusMeters] = useState(500);
   const [captureMethod, setCaptureMethod] = useState<'radius' | 'pin' | 'automatic'>('radius');
+  const [areaCenter, setAreaCenter] = useState<GeoCoordinate | null>(null);
+  const [areaCenterSource, setAreaCenterSource] = useState<'map' | 'device' | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [gpsUploadStatus, setGpsUploadStatus] = useState('GPS non condiviso');
   const [durationMinutes, setDurationMinutes] = useState(20);
   const [inviteCode, setInviteCode] = useState(new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('code') ?? '');
   const [session, setSession] = useState<Session | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [capturePin, setCapturePin] = useState('');
+  const [nowMs, setNowMs] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const currentRevision = useRef(0);
+  const gpsSequence = useRef(0);
+  const gpsRevocationInFlight = useRef(false);
 
   const checkService = useCallback(async () => {
     if (!API_BASE) { setService('unconfigured'); return; }
     try {
       await request('/v1/health');
       setService('ready');
-      setServiceMessage('Connessione protetta disponibile. Le modalità restano in sviluppo; la lobby online è reale.');
+      setServiceMessage('Connessione protetta disponibile. Classic Hide & Seek è attivo; le altre cinque modalità sono in sviluppo.');
     } catch {
       setService('unavailable');
       setServiceMessage('Il servizio multiplayer non risponde. Non verrà avviata una partita locale o simulata.');
@@ -82,6 +100,40 @@ export default function OnlineApp() {
   }, []);
 
   useEffect(() => { currentRevision.current = snapshot?.revision ?? 0; }, [snapshot?.revision]);
+
+  useEffect(() => {
+    if (!snapshot || !['countdown', 'active'].includes(snapshot.phase)) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [snapshot?.phase, snapshot?.matchId]);
+
+  useEffect(() => {
+    if (!session || !snapshot || !snapshot.gpsConsent || snapshot.virtualStatus !== 'active' || !location.sample || location.status !== 'ACTIVE') return;
+    if (snapshot.phase !== 'lobby' && snapshot.phase !== 'countdown' && snapshot.phase !== 'active') return;
+    const key = `huntzone-gps-sequence:${snapshot.matchId}`;
+    let previous = 0;
+    try { previous = Number(window.localStorage.getItem(key) ?? 0); } catch { /* Private browsing may block storage; this tab still sequences samples. */ }
+    const sequence = Math.max(gpsSequence.current, previous) + 1;
+    gpsSequence.current = sequence;
+    try { window.localStorage.setItem(key, String(sequence)); } catch { /* Sequence remains monotonic for this tab. */ }
+    const sample = location.sample;
+    void request<{ status: string; accuracyMeters: number }>('/v1/matches/' + snapshot.matchId + '/location', {
+      latitude: sample.latitude, longitude: sample.longitude, accuracyMeters: sample.accuracyMeters,
+      sequence, timestampMs: sample.timestampMs,
+    }).then(result => setGpsUploadStatus(`GPS verificato dal server · ±${Math.round(result.accuracyMeters)} m`))
+      .catch(cause => setGpsUploadStatus(cause instanceof Error ? cause.message : 'GPS in attesa di un campione valido'));
+  }, [location.sample, location.status, session?.playerId, snapshot?.gpsConsent, snapshot?.matchId, snapshot?.phase, snapshot?.virtualStatus]);
+
+  useEffect(() => {
+    if (snapshot && (snapshot.virtualStatus === 'captured' || snapshot.virtualStatus === 'withdrawn' || ['completed', 'cancelled'].includes(snapshot.phase))) location.stop();
+  }, [snapshot?.phase, snapshot?.virtualStatus, location.stop]);
+
+  useEffect(() => {
+    if (location.status !== 'DENIED' || !snapshot?.gpsConsent || gpsRevocationInFlight.current) return;
+    gpsRevocationInFlight.current = true;
+    setGpsUploadStatus('Permesso posizione negato · consenso in revoca');
+    void revokeGps().finally(() => { gpsRevocationInFlight.current = false; });
+  }, [location.status, snapshot?.gpsConsent]);
 
   useEffect(() => {
     if (!session || !snapshot) return;
@@ -122,8 +174,11 @@ export default function OnlineApp() {
   async function createLobby(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
+      if (!areaCenter) throw new Error('Scegli il centro del campo sulla mappa prima di creare la lobby.');
+      if (!mapReady) throw new Error('La mappa non è pronta. Attendi il caricamento prima di creare la lobby.');
+      location.stop();
       const guest = await createGuest();
-      const lobby = await request<Snapshot>('/v1/lobbies', { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60, captureMethod });
+      const lobby = await request<Snapshot>('/v1/lobbies', { modeId, playerCap, radiusMeters, durationSeconds: durationMinutes * 60, captureMethod, centerLatitude: areaCenter.latitude, centerLongitude: areaCenter.longitude });
       setSession(guest); setSnapshot(lobby);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Creazione lobby non riuscita.'); }
     finally { setBusy(false); }
@@ -163,6 +218,58 @@ export default function OnlineApp() {
     finally { setBusy(false); }
   }
 
+  async function captureTarget() {
+    if (!snapshot || !selectedTargetId) return;
+    setBusy(true); setError('');
+    try {
+      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/capture`, {
+        commandId: crypto.randomUUID(), expectedRevision: currentRevision.current, targetPlayerId: selectedTargetId,
+        ...(snapshot.config.captureMethod === 'pin' ? { pin: capturePin } : {}),
+      });
+      setSnapshot(result.snapshot); setCapturePin('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Cattura non confermata dal server.'); }
+    finally { setBusy(false); }
+  }
+
+  async function prepareGps() {
+    if (!session || !snapshot) return;
+    setBusy(true); setError('');
+    try {
+      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/location-consent`, {
+        commandId: crypto.randomUUID(), expectedRevision: currentRevision.current, granted: true,
+      });
+      setSnapshot(result.snapshot);
+      location.start();
+      setGpsUploadStatus('In attesa di un campione recente e preciso…');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Consenso GPS non registrato.'); }
+    finally { setBusy(false); }
+  }
+
+  async function revokeGps() {
+    if (!session || !snapshot || !snapshot.gpsConsent) return;
+    location.stop();
+    setBusy(true); setError('');
+    try {
+      const result = await request<{ snapshot: Snapshot }>(`/v1/matches/${snapshot.matchId}/location-consent`, {
+        commandId: crypto.randomUUID(), expectedRevision: currentRevision.current, granted: false,
+      });
+      setSnapshot(result.snapshot);
+      setGpsUploadStatus('Consenso revocato · campione rimosso dal server');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Revoca GPS non registrata.'); }
+    finally { setBusy(false); }
+  }
+
+  function changeAreaCenter(center: GeoCoordinate | null, source: 'map' | 'device' | null) {
+    setAreaCenter(center);
+    setAreaCenterSource(source);
+    // Area selection is a one-time opt-in. Do not keep watching the device during the lobby.
+    location.stop();
+  }
+
+  const onMapStatusChange = useCallback((status: MapLoadStatus) => {
+    setMapReady(status === 'READY' || status === 'DEGRADED');
+  }, []);
+
   async function copyInvite() {
     if (!snapshot) return;
     try {
@@ -186,6 +293,7 @@ export default function OnlineApp() {
         <form className="online-card" onSubmit={createLobby}>
           <div className="online-card-title"><span>01 / HOST</span><h2>Crea una lobby</h2></div>
           <label>Il tuo nome<input required minLength={2} maxLength={32} value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="Come ti vedranno gli amici" /></label>
+          {service === 'ready' && <Suspense fallback={<p className="online-dev-note">Caricamento mappa del campo…</p>}><GeoAreaPicker center={areaCenter} centerSource={areaCenterSource} radiusMeters={radiusMeters} onCenterChange={changeAreaCenter} onMapStatusChange={onMapStatusChange} /></Suspense>}
           <label>Modalità<select value={modeId} onChange={event => { const next = event.target.value as ModeId; setModeId(next); setPlayerCap(MODE_PRESETS[next].minPlayers); }}>
             {modeOptions.map(id => <option key={id} value={id}>{MODE_PRESETS[id].displayName} · IN SVILUPPO</option>)}
           </select></label>
@@ -193,7 +301,7 @@ export default function OnlineApp() {
           <div className="online-form-grid"><label>Posti<input type="number" min={MODE_PRESETS[modeId].minPlayers} max={MODE_PRESETS[modeId].maxPlayers} value={playerCap} onChange={event => setPlayerCap(Number(event.target.value))} /></label><label>Campo · metri<input type="number" min={100} max={3000} step={100} value={radiusMeters} onChange={event => setRadiusMeters(Number(event.target.value))} /></label></div>
           <label>Durata prevista · minuti<input type="number" min={10} max={120} value={durationMinutes} onChange={event => setDurationMinutes(Number(event.target.value))} /></label>
           <label>Sistema di cattura<select value={captureMethod} onChange={event => setCaptureMethod(event.target.value as typeof captureMethod)}><option value="radius">RAGGIO</option><option value="pin">PIN + prossimità</option><option value="automatic">AUTOMATICA</option></select></label>
-          <button className="online-button online-button--primary" disabled={!canConnect} type="submit">{busy ? 'CONNESSIONE…' : 'CREA LOBBY REALE'}<span>↗</span></button>
+          <button className="online-button online-button--primary" disabled={!canConnect || !areaCenter || !mapReady} type="submit">{busy ? 'CONNESSIONE…' : 'CREA LOBBY REALE'}<span>↗</span></button>
         </form>
         <form className="online-card online-card--join" onSubmit={joinLobby}>
           <div className="online-card-title"><span>02 / INVITATO</span><h2>Unisciti con un codice</h2></div>
@@ -204,11 +312,11 @@ export default function OnlineApp() {
         </form>
       </div>
       {error && <p className="online-error" role="alert">{error}</p>}
-      <p className="online-footnote">Per ora le sei modalità sono in sviluppo. Il client non mostra partecipanti inventati e non dichiara giocabile una lobby.</p>
+      <p className="online-footnote">Classic richiede almeno tre persone reali, GPS consentito e posizione verificata. Le altre modalità sono ancora in sviluppo; nessun bot o giocatore simulato entra nelle lobby.</p>
     </section> : <section className="online-content online-lobby">
       <div className="online-lobby-head"><p className="eyebrow"><span>02</span><i /> LOBBY PRIVATA · PERSONE COLLEGATE</p><h1>La squadra<br /><em>si raduna.</em></h1><p>Ogni partecipante qui sotto ha effettuato l'accesso con una sessione reale.</p></div>
       <div className="online-invite"><div><small>CODICE INVITO</small><strong>{snapshot.inviteCode}</strong><span>{snapshot.inviteUrl}</span></div><button className="online-button online-button--secondary" onClick={() => void copyInvite()}>{copied ? 'COPIATO' : 'CONDIVIDI INVITO'} ↗</button></div>
-      <div className="online-lobby-grid"><section className="online-card"><div className="online-card-title"><span>{snapshot.players.length} / {snapshot.config.playerCap} PARTECIPANTI REALI</span><h2>{snapshot.phase === 'active' ? 'PARTITA IN CORSO' : snapshot.phase === 'countdown' ? 'CONTO ALLA ROVESCIA' : `LOBBY ${snapshot.phase.toUpperCase()}`}</h2></div><ul className="online-roster">{snapshot.players.map(player => <li key={player.id} data-connected={player.connected}><span className="online-avatar">{player.displayName.slice(0, 1).toUpperCase()}</span><span className="online-player-name">{player.displayName}{player.id === snapshot.hostPlayerId && <small>HOST</small>}{player.id === snapshot.viewerPlayerId && <small>TU</small>}</span><span className={`online-player-state ${!player.connected ? 'is-disconnected' : player.ready ? 'is-ready' : ''}`}>{!player.connected ? 'RICONNESSIONE' : player.ready ? 'READY' : 'IN ATTESA'}</span></li>)}</ul>{snapshot.phase === 'lobby' && <><button className="online-button online-button--primary" disabled={busy} onClick={() => void setReady(!snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready)}>{snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready ? 'ANNULLA READY' : 'CONFERMA READY'}</button>{snapshot.isHost && <button className="online-button online-button--secondary" disabled={busy || !snapshot.capabilities?.start} onClick={() => void startMatch()}>AVVIA CLASSIC · 10 SEC</button>}<p className="online-dev-note">{mode.displayName}: l'avvio richiede area selezionata, almeno tre giocatori connessi e tutti READY.</p></>}{snapshot.phase === 'countdown' && <p className="online-dev-note">Il server sta completando l'avvio. Ruoli assegnati allo scadere del conto alla rovescia.</p>}{snapshot.phase === 'active' && <div className="online-dev-note"><b>Il tuo ruolo: {snapshot.roleId?.toUpperCase() ?? 'IN CARICAMENTO'}</b><p>Il ruolo viene inviato solo al tuo client. Il GPS, la mappa di gioco e le catture non sono ancora attivi.</p></div>}</section><aside className="online-card online-status-card"><span className="status-dot status-dot--green" /><strong>NESSUN BOT</strong><p>I partecipanti vengono dal server e spariscono solo quando escono o perdono la connessione. Una disconnessione non conta come cattura.</p><p><b>Stato rete:</b> riconnessione automatica attiva</p><p><b>GPS:</b> non richiesto in lobby</p></aside></div>
+      <div className="online-lobby-grid"><section className="online-card"><div className="online-card-title"><span>{snapshot.players.length} / {snapshot.config.playerCap} PARTECIPANTI REALI</span><h2>{snapshot.phase === 'active' ? 'PARTITA IN CORSO' : snapshot.phase === 'countdown' ? 'CONTO ALLA ROVESCIA' : `LOBBY ${snapshot.phase.toUpperCase()}`}</h2></div><ul className="online-roster">{snapshot.players.map(player => <li key={player.id} data-connected={player.connected}><span className="online-avatar">{player.displayName.slice(0, 1).toUpperCase()}</span><span className="online-player-name">{player.displayName}{player.id === snapshot.hostPlayerId && <small>HOST</small>}{player.id === snapshot.viewerPlayerId && <small>TU</small>}</span><span className={`online-player-state ${!player.connected ? 'is-disconnected' : player.ready ? 'is-ready' : ''}`}>{!player.connected ? 'RICONNESSIONE' : player.ready ? 'READY' : 'IN ATTESA'}</span></li>)}</ul>{snapshot.phase === 'lobby' && <><button className="online-button online-button--primary" disabled={busy} onClick={() => void setReady(!snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready)}>{snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready ? 'ANNULLA READY' : 'CONFERMA READY'}</button>{snapshot.gpsConsent ? <div className="gps-preparation"><b>{gpsUploadStatus}</b><p>La posizione esatta resta volatile durante la partita. Il server non invia coordinate di avversari al client.</p><button className="online-button online-button--secondary" disabled={busy} onClick={() => void revokeGps()}>REVOCA GPS E FERMA</button></div> : <button className="online-button online-button--secondary" disabled={busy || !snapshot.players.find(player => player.id === snapshot.viewerPlayerId)?.ready} onClick={() => void prepareGps()}>CONSENTI GPS E PREPARA</button>}{snapshot.isHost && <button className="online-button online-button--secondary" disabled={busy || !snapshot.capabilities?.start || !mapReady} onClick={() => void startMatch()}>AVVIA CLASSIC · 10 SEC</button>}<p className="online-dev-note">{mode.displayName}: servono area selezionata, almeno tre giocatori connessi e READY, consenso GPS e campioni affidabili di tutti.</p></>}{snapshot.phase === 'countdown' && <div className="online-dev-note"><b>PARTENZA TRA {Math.max(0, Math.ceil((Date.parse(snapshot.countdownEndsAt ?? '') - nowMs) / 1000))} SEC</b><p>Il server assegnerà i ruoli quando scade il conto alla rovescia.</p><b>{gpsUploadStatus}</b>{snapshot.gpsConsent && <button className="online-button online-button--secondary" disabled={busy} onClick={() => void revokeGps()}>REVOCA GPS E ANNULLA AVVIO</button>}</div>}{snapshot.phase === 'active' && <><div className="online-dev-note"><b>Il tuo ruolo: {snapshot.roleId?.toUpperCase() ?? 'IN CARICAMENTO'}</b><p>Tempo rimanente: {Math.floor(Math.max(0, Date.parse(snapshot.deadlineAt ?? '') - nowMs) / 60000)}:{String(Math.floor(Math.max(0, Date.parse(snapshot.deadlineAt ?? '') - nowMs) / 1000) % 60).padStart(2, '0')} · {gpsUploadStatus}</p>{snapshot.captureAvailableAt && nowMs < Date.parse(snapshot.captureAvailableAt) && <p>Vantaggio HIDER: {Math.ceil((Date.parse(snapshot.captureAvailableAt) - nowMs) / 1000)} secondi.</p>}{snapshot.roleId === 'hider' && snapshot.config.captureMethod === 'pin' && <p>PIN personale da comunicare solo al contatto fisico con il SEEKER: <strong>{snapshot.capturePin ?? 'in caricamento'}</strong></p>}{snapshot.roleId === 'seeker' && snapshot.config.captureMethod !== 'automatic' && <div className="gps-preparation"><label>BERSAGLIO<select value={selectedTargetId} onChange={event => setSelectedTargetId(event.target.value)}><option value="">Scegli HIDER vicino</option>{snapshot.captureTargets?.map(target => <option key={target.id} value={target.id}>{target.displayName}</option>)}</select></label>{snapshot.config.captureMethod === 'pin' && <label>PIN TEMPORANEO<input inputMode="numeric" maxLength={6} value={capturePin} onChange={event => setCapturePin(event.target.value.replace(/\D/g, '').slice(0, 6))} /></label>}<button className="online-button online-button--primary" disabled={busy || !snapshot.capabilities?.capture || !selectedTargetId || (snapshot.config.captureMethod === 'pin' && capturePin.length !== 6)} onClick={() => void captureTarget()}>VERIFICA CATTURA GPS</button><p>Il server controlla ruolo, consenso, distanza conservativa, accuratezza e freschezza dei campioni.</p></div>}{snapshot.config.captureMethod === 'automatic' && <p>La cattura si risolve automaticamente dopo 5 secondi di prossimità GPS precisa e continua.</p>}<button className="online-button online-button--secondary" onClick={() => void revokeGps()}>REVOCA GPS E RITIRATI</button>{snapshot.gpsConsent && location.status !== 'ACTIVE' && location.status !== 'STALE' && <button className="online-button online-button--primary" disabled={busy} onClick={() => { location.start(); setGpsUploadStatus('Riconnessione GPS in primo piano…'); }}>RIPRENDI GPS</button>}</div><Suspense fallback={<p className="online-dev-note">Caricamento mappa partita…</p>}><StadiaMap center={snapshot.areaCenter ?? null} radiusMeters={snapshot.config.radiusMeters} deviceSample={location.sample} focusCommand={null} onChooseCenter={() => undefined} onStatusChange={onMapStatusChange} /></Suspense></>}{['completed', 'cancelled'].includes(snapshot.phase) && <div className="online-dev-note"><h3>{snapshot.phase === 'completed' ? `VITTORIA: ${snapshot.winner?.toUpperCase() ?? 'PAREGGIO'}` : 'PARTITA TERMINATA SENZA VINCITORE'}</h3><p>{snapshot.endReason ?? 'La partita è conclusa.'}</p></div>}</section><aside className="online-card online-status-card"><span className="status-dot status-dot--green" /><strong>NESSUN BOT</strong><p>I partecipanti vengono dal server e spariscono solo quando escono o perdono la connessione. Una disconnessione non conta come cattura.</p><p><b>Stato rete:</b> riconnessione automatica attiva</p><p><b>GPS:</b> {snapshot.gpsConsent ? 'consenso registrato per la partita' : 'non attivo'}</p></aside></div>
       {error && <p className="online-error" role="alert">{error}</p>}
     </section>}
     <footer className="online-footer">HUNTZONE © 2026 <span>GIOCA CON ATTENZIONE · STOP IN QUALSIASI MOMENTO</span></footer>

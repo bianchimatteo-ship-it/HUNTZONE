@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GeoCoordinate, LocationSnapshot } from './location/geolocation';
 import { useLocation } from './location/LocationProvider';
-import StadiaMap from './map/StadiaMap';
+import StadiaMap, { type MapLoadStatus } from './map/StadiaMap';
 
 function formatAge(ageMs: number | null): string {
   if (ageMs === null) return '—';
@@ -24,11 +24,13 @@ export default function GeoAreaPicker({
   centerSource,
   radiusMeters,
   onCenterChange,
+  onMapStatusChange,
 }: {
   center: GeoCoordinate | null;
   centerSource: 'map' | 'device' | null;
   radiusMeters: number;
   onCenterChange: (center: GeoCoordinate | null, source: 'map' | 'device' | null) => void;
+  onMapStatusChange?: (status: MapLoadStatus) => void;
 }) {
   const location = useLocation();
   const [focusCommand, setFocusCommand] = useState<{ point: GeoCoordinate; token: number } | null>(null);
@@ -53,6 +55,7 @@ export default function GeoAreaPicker({
       deviceSample={location.sample}
       focusCommand={focusCommand}
       onChooseCenter={point => onCenterChange(point, 'map')}
+      onStatusChange={onMapStatusChange}
     />
     <div className="geo-selection-status" aria-live="polite">
       <span className="geo-selection-mark" aria-hidden="true">⌖</span>

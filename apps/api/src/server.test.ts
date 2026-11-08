@@ -25,7 +25,7 @@ describe('API without PostgreSQL', () => {
   it('does not create or simulate lobbies without an authenticated stored session', async () => {
     const response = await app.inject({
       method: 'POST', url: '/v1/lobbies',
-      payload: { modeId: 'classic-hide-and-seek', playerCap: 3, radiusMeters: 500, durationSeconds: 1200 },
+      payload: { modeId: 'classic-hide-and-seek', playerCap: 3, radiusMeters: 500, durationSeconds: 1200, centerLatitude: 45.46, centerLongitude: 9.19 },
     });
     expect(response.statusCode).toBe(503);
     expect(response.json().error.code).toBe('SERVICE_UNAVAILABLE');
