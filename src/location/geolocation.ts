@@ -25,7 +25,7 @@ export type LocationSnapshot = {
 
 type GeolocationPort = Pick<Geolocation, 'watchPosition' | 'clearWatch'>;
 
-const FRESHNESS_MS = 30_000;
+const FRESHNESS_MS = 5_000;
 const WATCH_OPTIONS: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 };
 
 const messages: Record<LocationStatus, string> = {
@@ -37,7 +37,7 @@ const messages: Record<LocationStatus, string> = {
   TIMEOUT: 'La posizione non è arrivata entro 15 secondi. Riprova in un luogo con segnale migliore.',
   UNSUPPORTED: 'Questo browser non supporta la geolocalizzazione.',
   STOPPED: 'Tracciamento fermato. Il campione è stato rimosso dalla memoria.',
-  STALE: 'Posizione non aggiornata da oltre 30 secondi. Fermati in sicurezza e attendi un nuovo campione.',
+  STALE: 'Posizione non aggiornata da oltre 5 secondi. Attendi un nuovo campione prima di proseguire.',
 };
 
 export function locationErrorStatus(code: number): Extract<LocationStatus, 'DENIED' | 'UNAVAILABLE' | 'TIMEOUT'> {

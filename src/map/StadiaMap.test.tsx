@@ -5,7 +5,7 @@ import { resetTestMaps, TestMap } from './MapLibreTestDouble';
 
 vi.mock('maplibre-gl', async () => {
   const mock = await import('./MapLibreTestDouble');
-  return { Map: mock.TestMap, NavigationControl: mock.NavigationControl };
+  return { Map: mock.TestMap, NavigationControl: mock.NavigationControl, setWorkerUrl: vi.fn() };
 });
 
 afterEach(() => { cleanup(); resetTestMaps(); vi.useRealTimers(); });

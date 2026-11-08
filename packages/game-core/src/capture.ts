@@ -122,6 +122,7 @@ export function evaluateCaptureEvidence(input: {
   nowMs: number;
   lastAcceptedSequence: { captor: number; target: number };
   proximityStartedAtMs?: number;
+  proximityNowMs?: number;
 }): CaptureEvidence {
   const { policy, captor, target, nowMs } = input;
   if (!Number.isFinite(nowMs) || !captor || !target) return { status: 'indeterminate', reason: 'missing-sample' };
@@ -143,8 +144,9 @@ export function evaluateCaptureEvidence(input: {
   }
   if (policy.method === 'automatic') {
     const startedAt = input.proximityStartedAtMs;
-    if (startedAt === undefined || !Number.isFinite(startedAt) || startedAt > nowMs
-      || nowMs - startedAt < (policy.automatic?.minimumProximitySeconds ?? Infinity) * 1000) {
+    const proximityNowMs = input.proximityNowMs ?? nowMs;
+    if (startedAt === undefined || !Number.isFinite(startedAt) || !Number.isFinite(proximityNowMs) || startedAt > proximityNowMs
+      || proximityNowMs - startedAt < (policy.automatic?.minimumProximitySeconds ?? Infinity) * 1000) {
       return { status: 'indeterminate', reason: 'dwell-incomplete', distanceMeters };
     }
   }

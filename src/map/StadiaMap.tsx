@@ -1,3 +1,4 @@
+import './configureMapLibreWorker';
 import { useEffect, useRef, useState } from 'react';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { type GeoJSONSource, type Map as MapLibreMap, NavigationControl } from 'maplibre-gl';

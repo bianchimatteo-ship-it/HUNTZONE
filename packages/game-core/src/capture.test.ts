@@ -54,6 +54,8 @@ describe('server-held capture evidence evaluation', () => {
     expect(evaluateCaptureEvidence({ policy, captor: near, target: nearby, nowMs: 11_000, lastAcceptedSequence: seq }).reason).toBe('dwell-incomplete');
     expect(evaluateCaptureEvidence({ policy, captor: near, target: nearby, nowMs: 18_000, lastAcceptedSequence: seq, proximityStartedAtMs: 11_000 }).reason).toBe('dwell-incomplete');
     expect(evaluateCaptureEvidence({ policy, captor: near, target: nearby, nowMs: 19_000, lastAcceptedSequence: seq, proximityStartedAtMs: 11_000 }).status).toBe('eligible');
+    expect(evaluateCaptureEvidence({ policy, captor: near, target: nearby, nowMs: 11_000, lastAcceptedSequence: seq, proximityStartedAtMs: 1000, proximityNowMs: 8999 }).reason).toBe('dwell-incomplete');
+    expect(evaluateCaptureEvidence({ policy, captor: near, target: nearby, nowMs: 11_000, lastAcceptedSequence: seq, proximityStartedAtMs: 1000, proximityNowMs: 9000 }).status).toBe('eligible');
   });
 
   it('does not decide a capture outcome or return coordinates', () => {
