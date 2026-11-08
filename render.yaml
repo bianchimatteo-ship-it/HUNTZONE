@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: huntzone-api-multiplayer
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    branch: main
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /v1/health
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: "10000"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: CORS_ORIGINS
+        value: https://huntzone-review.pages.dev
+      - key: PUBLIC_APP_ORIGIN
+        value: https://huntzone-review.pages.dev
+      - key: DATABASE_URL
+        fromDatabase:
+          name: huntzone-postgres-multiplayer
+          property: connectionString
+
+databases:
+  - name: huntzone-postgres-multiplayer
+    region: frankfurt
+    plan: 0.5c-1g
+    postgresMajorVersion: "16"
+    databaseName: huntzone
+    user: huntzone
+    diskSizeGB: 5
+    ipAllowList: []
