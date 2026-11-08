@@ -585,7 +585,7 @@ app.post<{ Params: { matchId: string }; Body: { commandId: string; expectedRevis
         const result = withdrawPlayer({ state: runtime, playerId: principal.playerId, commandId: request.body.commandId, nowMs: Date.now() });
         if (!result.ok) return { ok: false as const, status: 409, message: 'Ritiro partita non applicabile allo stato corrente.' };
         revision = result.value.state.revision;
-        await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $2 IN (\'completed\',\'cancelled\') THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [request.params.matchId, result.value.state.phase, revision]);
+        await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $4 THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [request.params.matchId, result.value.state.phase, revision, result.value.state.phase !== 'active']);
         await client.query("UPDATE participants SET virtual_status='withdrawn' WHERE match_id=$1 AND player_id=$2", [request.params.matchId, principal.playerId]);
         await client.query('INSERT INTO match_checkpoints(match_id,revision,engine_version,virtual_state) VALUES($1,$2,$3,$4)',
           [request.params.matchId, revision, result.value.state.engineVersion, JSON.stringify(result.value.state)]);
@@ -698,7 +698,7 @@ app.post<{ Params: { matchId: string }; Body: { latitude: number; longitude: num
                 commandId: `automatic-${randomUUID()}`, nowMs, evidence, automaticDwellVerified: true });
               if (!transition.ok) continue;
               const next = transition.value.state;
-              await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $2=\'completed\' THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [request.params.matchId, next.phase, next.revision]);
+              await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $4 THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [request.params.matchId, next.phase, next.revision, next.phase !== 'active']);
               await client.query("UPDATE participants SET virtual_status='captured' WHERE match_id=$1 AND player_id=$2", [request.params.matchId, hider.playerId]);
               await client.query('INSERT INTO match_events(match_id,revision,event_type,actor_player_id,payload) VALUES($1,$2,$3,$4,$5)',
                 [request.params.matchId, next.revision, 'player.captured', seeker.playerId, JSON.stringify({ targetPlayerId: hider.playerId, method: 'automatic', evidence: 'gps-verified' })]);
@@ -803,7 +803,7 @@ app.post<{ Params: { matchId: string }; Body: { commandId: string; expectedRevis
       const next = transition.value.state;
       const event = transition.value.event;
       const revision = next.revision;
-      await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $2=\'completed\' THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [matchId, next.phase, revision]);
+      await client.query('UPDATE matches SET phase=$2,revision=$3,ended_at=CASE WHEN $4 THEN clock_timestamp() ELSE ended_at END WHERE id=$1', [matchId, next.phase, revision, next.phase !== 'active']);
       await client.query("UPDATE participants SET virtual_status='captured' WHERE match_id=$1 AND player_id=$2", [matchId, request.body.targetPlayerId]);
       await client.query('INSERT INTO match_events(match_id,revision,event_type,actor_player_id,payload) VALUES($1,$2,$3,$4,$5)',
         [matchId, revision, event?.type ?? 'player.captured', principal.playerId, JSON.stringify({ targetPlayerId: request.body.targetPlayerId, evidence: 'gps-verified' })]);
