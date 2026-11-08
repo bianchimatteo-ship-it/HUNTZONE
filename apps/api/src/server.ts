@@ -277,7 +277,7 @@ async function publicSnapshot(matchId: string, viewerPlayerId: string) {
             )) AS all_gps_consented
        FROM participants p WHERE p.match_id=$1 AND p.player_id=$2`, [matchId, viewerPlayerId],
   );
-  const checkpoint = row.phase === 'active' || row.phase === 'completed' || row.phase === 'paused'
+  const checkpoint = row.phase === 'active' || row.phase === 'completed' || row.phase === 'cancelled' || row.phase === 'paused'
     ? await pool.query<{ virtual_state: MatchRuntime }>('SELECT virtual_state FROM match_checkpoints WHERE match_id=$1 ORDER BY revision DESC LIMIT 1', [matchId])
     : { rows: [] as { virtual_state: MatchRuntime }[] };
   const runtime = checkpoint.rows[0]?.virtual_state;
