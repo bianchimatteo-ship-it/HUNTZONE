@@ -282,6 +282,7 @@ async function publicSnapshot(matchId: string, viewerPlayerId: string) {
     : { rows: [] as { virtual_state: MatchRuntime }[] };
   const runtime = checkpoint.rows[0]?.virtual_state;
   const isClassicLobby = row.phase === 'lobby' && row.mode_id === 'classic-hide-and-seek';
+  if (row.config.captureMethod === 'pin' && runtime?.phase === 'active' && !capturePins.has(matchId)) issueCapturePins(matchId, runtime);
   const gpsConsent = Boolean(own.rows[0]?.gps_consent);
   const gpsReady = Boolean(gpsObservation(matchId, viewerPlayerId));
   const canStart = Boolean(isClassicLobby && viewerPlayerId === row.host_player_id && row.has_area
@@ -613,6 +614,7 @@ app.post<{ Params: { matchId: string }; Body: { commandId: string; expectedRevis
     const snapshot = await publicSnapshot(request.params.matchId, principal.playerId);
     if (snapshot && ['completed', 'cancelled'].includes(snapshot.phase)) {
       gpsObservations.delete(request.params.matchId); capturePins.delete(request.params.matchId);
+      for (const proximityKey of automaticProximitySince.keys()) if (proximityKey.startsWith(`${request.params.matchId}:`)) automaticProximitySince.delete(proximityKey);
       const timer = countdownTimers.get(request.params.matchId); if (timer) clearTimeout(timer);
       countdownTimers.delete(request.params.matchId);
     }
